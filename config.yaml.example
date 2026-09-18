@@ -1,0 +1,36 @@
+# Sanitized borgmatic 2.x example for the TrueNAS installation created by
+# setup-borgmatic.sh. Copy this to config.yaml and replace every placeholder.
+# Never commit the real config.yaml: repository addresses and monitoring URLs
+# may identify your systems, and the live file is ignored by .gitignore.
+
+# This empty list is intentional when ZFS datasets are selected exclusively by
+# the org.torsion.borgmatic:backup=auto ZFS user property.
+source_directories: []
+
+repositories:
+    - path: ssh://RSYNC_USER@RSYNC_HOST/./REPOSITORY_PATH
+      label: rsync.net
+
+local_path: /mnt/apps/borgmatic/bin/borg-wrapper.sh
+remote_path: borg14
+
+temporary_directory: /mnt/apps/borgmatic/tmp
+user_runtime_directory: /mnt/apps/borgmatic/tmp
+borg_base_directory: /mnt/apps/borgmatic
+
+ssh_command: ssh -i /mnt/apps/borgmatic/ssh/id_ed25519
+encryption_passcommand: cat /mnt/apps/borgmatic/passphrase
+
+# Enable consistent snapshots of tagged ZFS datasets.
+zfs: {}
+
+keep_daily: 30
+keep_weekly: 52
+keep_monthly: 24
+keep_yearly: 5
+
+healthchecks:
+    ping_url: https://hc-ping.com/REPLACE-WITH-YOUR-UUID
+    send_logs: true
+
+monitoring_verbosity: 1

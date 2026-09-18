@@ -1,0 +1,188 @@
+# borgmatic on TrueNAS SCALE
+
+This repository installs a pinned borgmatic and Borg environment on a
+TrueNAS SCALE system without modifying the appliance-managed operating system.
+It is intended to live directly in `/mnt/apps/borgmatic` alongside the active
+installation.
+
+The installer works around three TrueNAS constraints:
+
+- `apt` and normal system package installation are disabled.
+- the system Python is externally managed and lacks the standard venv bootstrap;
+- `/tmp` is mounted `noexec`, which prevents Borg's standalone binary from
+  unpacking and executing its bundled libraries there.
+
+The script uses a pinned virtualenv zipapp, a pinned official Borg standalone
+binary, and an exec-enabled private temporary directory on the persistent ZFS
+dataset. Downloads are checksum-verified before installation.
+
+## Repository safety model
+
+The `.gitignore` ignores everything by default and permits only these public,
+sanitized files:
+
+- `.gitignore`
+- `README.md`
+- `CHANGELOG.md`
+- `config.yaml.example`
+- `setup-borgmatic.sh`
+- `.github/workflows/shellcheck.yml`
+
+The real configuration, passphrase, SSH keys, Borg security state, cache,
+virtual environments, binaries, and temporary files remain untracked. Before
+every commit, still review `git status` and never use `git add -f` on live
+runtime files.
+
+## Create the public repository
+
+Start with this package on a workstation:
+
+```sh
+cd truenas-borgmatic
+git init -b main
+git add .
+git status --short
+git commit -m "Initial TrueNAS borgmatic installer"
+git remote add origin https://github.com/YOUR_ACCOUNT/truenas-borgmatic.git
+git push -u origin main
+```
+
+Create the empty public repository on GitHub before the final two commands. Do
+not initialize it with a README or `.gitignore`, because this package already
+contains both.
+
+## Adopt the repository in an existing live installation
+
+The live directory is not empty, so `git clone` cannot be used directly. Move
+the existing installer aside, initialize Git, and check out the public files:
+
+```sh
+cd /mnt/apps/borgmatic
+mv setup-borgmatic.sh setup-borgmatic.sh.pre-git
+
+git init
+git remote add origin https://github.com/YOUR_ACCOUNT/truenas-borgmatic.git
+git fetch origin
+git checkout -b main --track origin/main
+```
+
+Confirm that Git sees only the intended public files:
+
+```sh
+git status --short --untracked-files=all
+git add --dry-run .
+```
+
+The `.pre-git` copy and every live runtime file should be ignored. Once the
+checked-out script has been reviewed, the ignored `.pre-git` copy can be kept
+temporarily or removed manually.
+
+Run Git commands as `truenas_admin`; do not use `sudo git`. Run only the
+installer itself as root.
+
+## First-time configuration
+
+Create the `apps/borgmatic` dataset through the TrueNAS GUI before running the
+installer. Review the complete prerequisites and manual steps in the header of
+`setup-borgmatic.sh`, then run:
+
+```sh
+sudo sh /mnt/apps/borgmatic/setup-borgmatic.sh
+```
+
+Create the real configuration from the sanitized example:
+
+```sh
+sudo cp /mnt/apps/borgmatic/config.yaml.example \
+    /mnt/apps/borgmatic/config.yaml
+sudo chmod 600 /mnt/apps/borgmatic/config.yaml
+```
+
+Replace all placeholders and add any settings used by your existing backup.
+The example assumes datasets are selected with this ZFS user property:
+
+```sh
+sudo zfs set org.torsion.borgmatic:backup=auto POOL/DATASET
+```
+
+Do not replace an existing working `config.yaml` with the example.
+
+## Updating from Git
+
+Do not update while a backup is running. Fetch and inspect changes first:
+
+```sh
+cd /mnt/apps/borgmatic
+git status
+git pull --ff-only
+git log -1 --oneline
+git diff HEAD~1 -- setup-borgmatic.sh
+```
+
+Then run the updated installer manually:
+
+```sh
+sudo sh /mnt/apps/borgmatic/setup-borgmatic.sh
+```
+
+For repeatable deployments, tag commits after they have passed a real backup
+and restore test:
+
+```sh
+git tag -a v1.0.0 -m "Tested TrueNAS borgmatic installer"
+git push origin v1.0.0
+```
+
+Deploy a specific tag on TrueNAS with:
+
+```sh
+cd /mnt/apps/borgmatic
+git fetch --tags
+git checkout --detach v1.0.0
+sudo sh ./setup-borgmatic.sh
+```
+
+Return to the main branch with `git switch main`.
+
+## Verification
+
+After installation, verify the installed versions and perform an actual backup
+and restore test. A dry run does not exercise the ZFS snapshot path used by
+this configuration.
+
+```sh
+borgmatic --version
+borg --version
+borgmatic create --list --stats
+borgmatic list
+borgmatic extract --archive latest --path /some/test/path \
+    --destination /tmp/restore-test
+```
+
+## Rollback
+
+When replacing an existing installation, the script retains one prior venv and
+Borg binary:
+
+```text
+/mnt/apps/borgmatic/venv-previous
+/mnt/apps/borgmatic/bin/borg.previous
+```
+
+The installer automatically restores them if its final checks fail. For a
+manual rollback after a later operational problem, first make sure no backup is
+running, then move the current generation aside and restore both previous
+items. Do not restore only one half of the pair.
+
+## Updating pinned versions
+
+Pinned versions should be updated deliberately rather than automatically:
+
+- review borgmatic and Borg releases once or twice per year;
+- keep the local and rsync.net Borg major/minor families compatible;
+- update the version, immutable download URL, and checksum together;
+- change one component at a time;
+- commit, deploy, run a real backup, and test a restore before tagging.
+
+Virtualenv is only an installation bootstrap. Leave it pinned unless a security
+or Python compatibility issue provides a reason to change it.
