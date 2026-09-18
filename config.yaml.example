@@ -13,11 +13,9 @@ repositories:
 
 local_path: /mnt/apps/borgmatic/bin/borg-wrapper.sh
 remote_path: borg14
-
 temporary_directory: /mnt/apps/borgmatic/tmp
 user_runtime_directory: /mnt/apps/borgmatic/tmp
 borg_base_directory: /mnt/apps/borgmatic
-
 ssh_command: ssh -i /mnt/apps/borgmatic/ssh/id_ed25519
 encryption_passcommand: cat /mnt/apps/borgmatic/passphrase
 
@@ -32,5 +30,19 @@ keep_yearly: 5
 healthchecks:
     ping_url: https://hc-ping.com/REPLACE-WITH-YOUR-UUID
     send_logs: true
-
 monitoring_verbosity: 1
+
+# Optional but recommended -- retry transient network/SSH failures against
+# rsync.net rather than treating them as immediate hard failures.
+# retries: 5
+# retry_wait: 5
+
+# Optional -- periodic consistency verification, run less often than backups
+# since it reads more data. archives is capped via check_last so it doesn't
+# re-verify your entire retention window on every run.
+# checks:
+#     - name: repository
+#       frequency: 4 weeks
+#     - name: archives
+#       frequency: 8 weeks
+# check_last: 3

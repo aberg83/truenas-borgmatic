@@ -2,6 +2,30 @@
 
 All notable changes to this repository are documented here.
 
+## 1.1.0 - 2026-09-17
+
+- Added a shared `flock` lock file (`$BASE_DIR/borgmatic.lock`) between the
+  installer and the cron-triggered backup run, so the two can never execute
+  concurrently, and overlapping backup runs can't stack. Requires updating
+  the TrueNAS Cron Job command to the flock-wrapped form -- see README.
+- Added `--check`: read-only verification of an existing install (Borg
+  binary, wrapper, borgmatic, and config validation) with no downloads and
+  no mutation. Safe to run at any time, including during a live backup.
+- Added `--simulate-failure`: deliberately fails a real install partway
+  through, immediately after the current venv/Borg binary are moved aside,
+  to prove the automatic rollback mechanism actually restores them rather
+  than relying on it having been reasoned about but never triggered.
+- Added `--version` handling alongside the two new flags via a single
+  argument-parsing pass.
+- Refactored the post-install sanity checks into a shared `run_verification`
+  function used by both a normal install and standalone `--check`.
+- Documented in the script header why the interactive `borgmatic`/`borg`
+  aliases are deliberately not flock-wrapped (a left-open `mount` session
+  would otherwise silently block every subsequent cron run).
+- `config.yaml.example`: added a commented-out optional block for
+  `retries`/`retry_wait` and `checks`/`check_last`, matching settings used
+  in the validated production configuration this installer is based on.
+
 ## 1.0.4 - 2026-09-18
 
 - Validate an existing live `config.yaml` before committing a replacement

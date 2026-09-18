@@ -2,8 +2,8 @@
 #
 # setup-borgmatic.sh
 #
-# Runbook for building (or rebuilding) the borgmatic + Borg install on boxer
-# (TrueNAS SCALE, appliance-locked, apt disabled).
+# Installer/upgrader for a pinned borgmatic + Borg environment on TrueNAS
+# SCALE, without modifying the appliance-managed operating system.
 #
 # WHY THIS SCRIPT EXISTS
 # -----------------------
@@ -29,14 +29,58 @@
 # dataset, and wrapping raw `borg` invocations in a small script that sets
 # TMPDIR itself before exec'ing the binary.
 #
-# WHEN TO RUN THIS
-# -----------------
+# USAGE
+# ------
+#   sudo sh setup-borgmatic.sh                  Install or upgrade.
+#   sudo sh setup-borgmatic.sh --check           Verify an existing install
+#                                                 only -- no downloads, no
+#                                                 replacement, nothing mutated.
+#                                                 Safe to run any time,
+#                                                 including while a backup is
+#                                                 in progress. Use this right
+#                                                 after a TrueNAS update or
+#                                                 reboot, before trusting the
+#                                                 nightly cron job.
+#   sudo sh setup-borgmatic.sh --simulate-failure
+#                                                 Runs a REAL install, but
+#                                                 deliberately fails partway
+#                                                 through -- right after your
+#                                                 current venv/Borg binary
+#                                                 have been moved aside --
+#                                                 to prove the automatic
+#                                                 rollback actually restores
+#                                                 them. Requires an existing
+#                                                 working install. Ends with
+#                                                 your previous install back
+#                                                 in place, confirmed working.
+#   sudo sh setup-borgmatic.sh --version         Print this script's version.
+#
+# WHEN TO RUN A REAL INSTALL/UPGRADE
+# ------------------------------------
 #   - First-time setup.
 #   - After a major TrueNAS version jump, if `borgmatic --version` (or the
 #     nightly cron job) starts failing -- e.g. a Python ABI mismatch after
 #     an OS Python version bump, or a glibc floor bump that the pinned Borg
 #     binary no longer meets. Bump BORG_VERSION below if you need a newer
 #     Borg release to match a newer glibc.
+#   - Deliberately bumping BORGMATIC_VERSION or BORG_VERSION. Change one
+#     component at a time; commit, deploy, run a real backup, and test a
+#     restore before tagging.
+#
+# LOCKING
+# --------
+# A single lock file ($BASE_DIR/borgmatic.lock) is shared between this
+# installer and the actual cron-triggered backup run, so the two can never
+# execute at the same time, and two overlapping backup runs (if one ever
+# takes longer than your schedule interval) can't stack either. This
+# requires your TrueNAS Cron Job command to be flock-wrapped -- see step 4
+# below. --check does NOT take this lock (it's read-only and safe to run
+# concurrently with a real backup). The interactive `borgmatic`/`borg`
+# aliases are deliberately NOT flock-wrapped: a `borgmatic mount` session
+# left open would otherwise silently block every subsequent cron run for as
+# long as it stayed mounted, which is a worse failure mode than the rare
+# overlap this lock is meant to catch. Manual, supervised use is lower risk
+# than an unattended cron collision.
 #
 # BEFORE RUNNING
 # ---------------
@@ -51,18 +95,20 @@
 #
 # AFTER RUNNING -- manual steps this script does NOT do
 # --------------------------------------------------------
-#   1. Write $BASE_DIR/config.yaml. Minimum settings to match this install:
+#   1. Write $BASE_DIR/config.yaml. See config.yaml.example for the full
+#      annotated template. Minimum settings to match this install:
 #
-#        local_path: $BASE_DIR/bin/borg-wrapper.sh   # NOT the raw borg binary --
-#                                             # borgmatic doesn't reliably pass
-#                                             # TMPDIR through to the borg
-#                                             # subprocess for every action (it
-#                                             # works for create/list, but NOT
-#                                             # for umount, observed directly on
-#                                             # this box). Pointing local_path at
-#                                             # the wrapper guarantees TMPDIR is
-#                                             # set for every action, not just
-#                                             # the ones tested so far.
+#        local_path: $BASE_DIR/bin/borg-wrapper.sh   # NOT the raw borg binary
+#                                             # -- borgmatic doesn't reliably
+#                                             # pass TMPDIR through to the
+#                                             # borg subprocess for every
+#                                             # action (works for create/
+#                                             # list, but NOT for umount,
+#                                             # observed directly on this
+#                                             # box). The wrapper guarantees
+#                                             # TMPDIR is set for every
+#                                             # action, not just the ones
+#                                             # tested so far.
 #        remote_path: borgXX                 # match your rsync.net-side
 #                                             # pinned Borg version, e.g.
 #                                             # borg14 for Borg 1.4.x
@@ -75,7 +121,7 @@
 #                                             # encryption_passphrase: line --
 #                                             # config.yaml gets backed up
 #                                             # into the repo it unlocks
-#        zfs:
+#        zfs: {}
 #        repositories:
 #            - path: ssh://youruser@yourhost.rsync.net/./yourrepo
 #              label: rsync.net
@@ -101,10 +147,16 @@
 #
 #   4. TrueNAS Cron Job (System Settings -> Advanced -> Cron Jobs):
 #        User: root
-#        Command: $BASE_DIR/venv/bin/borgmatic -c $BASE_DIR/config.yaml
+#        Command: flock -n $LOCK_FILE $BASE_DIR/venv/bin/borgmatic -c $BASE_DIR/config.yaml
 #        Hide Standard Output: checked
 #        Hide Standard Error: unchecked (catches failures before a
 #          healthchecks ping would ever fire)
+#      The flock -n wrapper is new -- if you're upgrading from a version of
+#      this installer that predates locking, update the existing Cron Job's
+#      command to add it. -n means non-blocking: if a backup or install is
+#      already using the lock, this run is skipped rather than queued --
+#      healthchecks' dead-man's-switch will flag a skipped run the same way
+#      it flags any other missed one.
 #
 #   5. TrueNAS-managed passwordless sudo (Credentials -> Users ->
 #      truenas_admin -> Allowed Sudo Commands (No Password) -- do NOT use a
@@ -142,12 +194,18 @@
 #      `sudo fusermount -u BASE_DIR/restore-mount`) always works as a fallback
 #      -- it's a normal FUSE mount at the kernel level, so standard unmount
 #      tools apply regardless of what borgmatic itself is doing.
+#      Don't leave a mount open indefinitely -- see LOCKING above for why.
+#
+#   9. Prove the rollback mechanism actually works, once, deliberately:
+#        sudo sh setup-borgmatic.sh --simulate-failure
+#      then confirm your install is intact:
+#        sudo sh setup-borgmatic.sh --check
 #
 set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.0.4"
+SCRIPT_VERSION="1.1.0"
 BASE_DIR="/mnt/apps/borgmatic"
 BORGMATIC_VERSION="2.1.7"
 BORG_VERSION="1.4.5"
@@ -157,14 +215,31 @@ BORG_URL="https://github.com/borgbackup/borg/releases/download/${BORG_VERSION}/$
 VIRTUALENV_VERSION="21.7.4"
 VIRTUALENV_URL="https://github.com/pypa/virtualenv/releases/download/${VIRTUALENV_VERSION}/virtualenv.pyz"
 VIRTUALENV_SHA256="2dfdb6785b762b8a7a7a31d413c16516aa785552d05f61435b072fde1cb340cc"
+LOCK_FILE="$BASE_DIR/borgmatic.lock"
 # -----------------------------------------------------------------------------
 
-if [ "${1:-}" = "--version" ]; then
-    echo "setup-borgmatic.sh $SCRIPT_VERSION"
-    exit 0
-fi
+ACTION="install"
+for arg in "$@"; do
+    case "$arg" in
+        --version)
+            echo "setup-borgmatic.sh $SCRIPT_VERSION"
+            exit 0
+            ;;
+        --check)
+            ACTION="check"
+            ;;
+        --simulate-failure)
+            ACTION="simulate-failure"
+            ;;
+        *)
+            echo "ERROR: Unknown argument: $arg" >&2
+            echo "Usage: $0 [--check|--simulate-failure|--version]" >&2
+            exit 1
+            ;;
+    esac
+done
 
-for required_command in curl python3 sha256sum awk grep; do
+for required_command in curl python3 sha256sum awk grep flock; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "ERROR: Required command not found: $required_command" >&2
         exit 1
@@ -182,14 +257,7 @@ if [ ! -d "$BASE_DIR" ]; then
     exit 1
 fi
 
-if command -v pgrep >/dev/null 2>&1 \
-    && pgrep -f "$BASE_DIR/venv/bin/borgmatic" >/dev/null 2>&1; then
-    echo "ERROR: borgmatic appears to be running." >&2
-    echo "Wait for the current backup to finish before running this installer." >&2
-    exit 1
-fi
-
-echo "==> setup-borgmatic.sh $SCRIPT_VERSION"
+echo "==> setup-borgmatic.sh $SCRIPT_VERSION ($ACTION)"
 echo "==> Using base directory: $BASE_DIR"
 mkdir -p "$BASE_DIR/bin" "$BASE_DIR/tmp" "$BASE_DIR/ssh"
 chmod 700 "$BASE_DIR/ssh" "$BASE_DIR/tmp"
@@ -213,24 +281,96 @@ download() {
         -o "$destination" "$url"
 }
 
+# Shared by a normal install's final sanity check and standalone --check
+# mode. Never downloads or replaces anything -- read-only verification.
+run_verification() {
+    echo "==> Verifying Borg binary runs (using TMPDIR=$BASE_DIR/tmp)"
+    if TMPDIR="$BASE_DIR/tmp" "$BASE_DIR/bin/borg" --version; then
+        echo "    Borg OK."
+    else
+        echo "    Borg failed to run. Check glibc compatibility (asset: $BORG_ASSET) and TMPDIR permissions." >&2
+        return 1
+    fi
+
+    if [ -x "$BASE_DIR/bin/borg-wrapper.sh" ]; then
+        echo "==> Verifying borg-wrapper.sh"
+        if TMPDIR="$BASE_DIR/tmp" "$BASE_DIR/bin/borg-wrapper.sh" --version >/dev/null; then
+            echo "    Wrapper OK."
+        else
+            echo "    Wrapper failed to run." >&2
+            return 1
+        fi
+    else
+        echo "WARNING: $BASE_DIR/bin/borg-wrapper.sh is missing or not executable." >&2
+    fi
+
+    echo "==> Verifying borgmatic runs"
+    if "$BASE_DIR/venv/bin/borgmatic" --version; then
+        echo "    borgmatic OK."
+    else
+        echo "    borgmatic failed to run." >&2
+        return 1
+    fi
+
+    if [ -f "$BASE_DIR/config.yaml" ]; then
+        echo "==> Validating existing borgmatic configuration"
+        if "$BASE_DIR/venv/bin/borgmatic" config validate \
+            --config "$BASE_DIR/config.yaml"; then
+            echo "    Configuration OK."
+        else
+            echo "    Configuration validation failed." >&2
+            return 1
+        fi
+    else
+        echo "NOTE: $BASE_DIR/config.yaml not found -- skipping config validation."
+    fi
+}
+
+# ---- --check mode: read-only, no lock needed, no mutation ------------------
+if [ "$ACTION" = "check" ]; then
+    if [ ! -x "$BASE_DIR/bin/borg" ] || [ ! -x "$BASE_DIR/venv/bin/borgmatic" ]; then
+        echo "ERROR: No existing installation found at $BASE_DIR to check." >&2
+        echo "Run this script without --check to install." >&2
+        exit 1
+    fi
+    if run_verification; then
+        echo ""
+        echo "==> All checks passed."
+        exit 0
+    else
+        echo ""
+        echo "==> One or more checks failed. See above." >&2
+        exit 1
+    fi
+fi
+
+# ---- install / simulate-failure: acquire the shared lock -------------------
+# Shared with the cron-invoked backup itself (see LOCKING above) so the
+# installer and a real backup run can never execute at the same time.
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo "ERROR: Could not acquire $LOCK_FILE." >&2
+    echo "A backup or another instance of this installer appears to be running." >&2
+    echo "Wait for it to finish, then try again." >&2
+    exit 1
+fi
+
 rollback_install() {
     echo "ERROR: Installation failed; restoring previous installation." >&2
-
     if [ "$VENV_REPLACED" -eq 1 ]; then
         rm -rf "$BASE_DIR/venv"
         if [ -d "$BASE_DIR/venv-previous" ]; then
             mv "$BASE_DIR/venv-previous" "$BASE_DIR/venv"
         fi
     fi
-
     if [ "$BORG_REPLACED" -eq 1 ]; then
         rm -f "$BASE_DIR/bin/borg"
         if [ -f "$BASE_DIR/bin/borg.previous" ]; then
             mv "$BASE_DIR/bin/borg.previous" "$BASE_DIR/bin/borg"
         fi
     fi
-
     ROLLBACK_ACTIVE=0
+    echo "==> Rollback complete. Run '$0 --check' to confirm the restored install works."
 }
 
 handle_exit() {
@@ -286,6 +426,13 @@ fi
 VENV_REPLACED=1
 ROLLBACK_ACTIVE=1
 
+if [ "$ACTION" = "simulate-failure" ]; then
+    echo ""
+    echo "==> --simulate-failure: your current venv was just moved aside."
+    echo "    Deliberately failing now to prove automatic rollback restores it."
+    exit 1
+fi
+
 echo "==> Building replacement venv at $BASE_DIR/venv"
 python3 "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/venv"
 
@@ -322,6 +469,7 @@ WRAPPER_EOF
 chmod 755 "$BASE_DIR/bin/borg-wrapper.sh"
 
 # ---- 6. Shell aliases (survive on the dataset, not the OS image) ----------
+# Deliberately NOT flock-wrapped -- see LOCKING above.
 echo "==> Writing aliases.sh"
 cat > "$BASE_DIR/aliases.sh" <<ALIASES_EOF
 alias borgmatic='sudo $BASE_DIR/venv/bin/borgmatic -c $BASE_DIR/config.yaml'
@@ -330,27 +478,15 @@ ALIASES_EOF
 chmod 644 "$BASE_DIR/aliases.sh"
 
 # ---- 7. Sanity checks -------------------------------------------------------
-echo "==> Verifying Borg binary runs (using TMPDIR=$BASE_DIR/tmp)"
-if TMPDIR="$BASE_DIR/tmp" "$BASE_DIR/bin/borg" --version; then
-    echo "    Borg OK."
-else
-    echo "    Borg failed to run. Check glibc compatibility (asset: $BORG_ASSET) and TMPDIR permissions." >&2
-    exit 1
-fi
-
-echo "==> Verifying borgmatic runs"
-if "$BASE_DIR/venv/bin/borgmatic" --version; then
-    echo "    borgmatic OK."
-else
-    echo "    borgmatic failed to run." >&2
+if ! run_verification; then
     exit 1
 fi
 
 if [ -f "$BASE_DIR/config.yaml" ]; then
-    echo "==> Validating existing borgmatic configuration"
-    "$BASE_DIR/venv/bin/borgmatic" config validate \
-        --config "$BASE_DIR/config.yaml"
-    echo "    Configuration OK."
+    :  # already validated inside run_verification
+else
+    echo "NOTE: no config.yaml yet -- see the AFTER RUNNING section in this"
+    echo "      script's header comments for the required settings."
 fi
 
 ROLLBACK_ACTIVE=0
@@ -360,13 +496,17 @@ cat <<EOF
 
 ==============================================================================
 Done. venv, Borg binary, wrapper script, and aliases.sh are all in place.
+
 One previous venv and Borg binary are retained as venv-previous and
 bin/borg.previous when an earlier installation existed.
 
 Still to do manually -- see the "AFTER RUNNING" section in this script's
 header comments for the full list (config.yaml, passphrase file, rsync.net
-authorized_keys, Cron Job, GUI-managed passwordless sudo, sourcing
-aliases.sh, and end-to-end testing). None of these are scriptable safely --
-they're one-time config choices or GUI-only settings.
+authorized_keys, the flock-wrapped Cron Job command, GUI-managed
+passwordless sudo, sourcing aliases.sh, and end-to-end testing).
+
+Worth doing once, now that a working install exists:
+  sudo sh $0 --simulate-failure    # proves rollback actually works
+  sudo sh $0 --check               # quick post-update/reboot verification
 ==============================================================================
 EOF
