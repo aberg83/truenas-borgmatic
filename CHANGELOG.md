@@ -2,6 +2,15 @@
 
 All notable changes to this repository are documented here.
 
+## 1.0.4 - 2026-09-18
+
+- Validate an existing live `config.yaml` before committing a replacement
+  installation.
+- Automatically restore the previous venv and Borg binary when the live
+  configuration is incompatible with the replacement borgmatic version.
+- Document the credentials and configuration that must be kept off-host for
+  disaster recovery.
+
 ## 1.0.3 - 2026-09-18
 
 - Set generated `aliases.sh` to mode 0644 so `truenas_admin` can source it

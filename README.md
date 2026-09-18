@@ -112,6 +112,23 @@ sudo zfs set org.torsion.borgmatic:backup=auto POOL/DATASET
 
 Do not replace an existing working `config.yaml` with the example.
 
+## Disaster-recovery material
+
+Git intentionally excludes the live configuration and all credentials. Keep
+the following outside this TrueNAS system, in storage appropriate to the
+sensitivity of each item:
+
+- the Borg encryption passphrase, in a password manager or protected emergency
+  record;
+- an encrypted off-host copy of the real `config.yaml`;
+- the rsync.net SSH private key, or verified rsync.net account access that lets
+  you register a replacement key; and
+- the repository address and rsync.net account details.
+
+The repository and its archives cannot be recovered without the encryption
+passphrase. Do not rely on the copies inside `/mnt/apps/borgmatic` as your only
+recovery source.
+
 ## Updating from Git
 
 Do not update while a backup is running. Fetch and inspect changes first:
@@ -129,6 +146,10 @@ Then run the updated installer manually:
 ```sh
 sudo sh /mnt/apps/borgmatic/setup-borgmatic.sh
 ```
+
+When a live `config.yaml` exists, the installer validates it with the new
+borgmatic version before completing the upgrade. A validation failure restores
+the previous venv and Borg binary automatically.
 
 For repeatable deployments, tag commits after they have passed a real backup
 and restore test:

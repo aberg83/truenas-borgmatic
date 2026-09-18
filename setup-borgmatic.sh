@@ -147,7 +147,7 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.0.3"
+SCRIPT_VERSION="1.0.4"
 BASE_DIR="/mnt/apps/borgmatic"
 BORGMATIC_VERSION="2.1.7"
 BORG_VERSION="1.4.5"
@@ -344,6 +344,13 @@ if "$BASE_DIR/venv/bin/borgmatic" --version; then
 else
     echo "    borgmatic failed to run." >&2
     exit 1
+fi
+
+if [ -f "$BASE_DIR/config.yaml" ]; then
+    echo "==> Validating existing borgmatic configuration"
+    "$BASE_DIR/venv/bin/borgmatic" config validate \
+        --config "$BASE_DIR/config.yaml"
+    echo "    Configuration OK."
 fi
 
 ROLLBACK_ACTIVE=0
