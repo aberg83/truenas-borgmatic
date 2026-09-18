@@ -147,9 +147,9 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.0.2"
 BASE_DIR="/mnt/apps/borgmatic"
-BORGMATIC_VERSION="2.0.11"
+BORGMATIC_VERSION="2.1.7"
 BORG_VERSION="1.4.5"
 BORG_ASSET="borg-linux-glibc231-x86_64"
 BORG_SHA256="c8457f70660064d0f45b38283ab4cc65b342970012013201d3aec713a75898fb"
@@ -214,18 +214,39 @@ download() {
 }
 
 rollback_install() {
-    echo "ERROR: Installation verification failed; restoring previous installation." >&2
+    echo "ERROR: Installation failed; restoring previous installation." >&2
 
-    rm -rf "$BASE_DIR/venv"
-    if [ -d "$BASE_DIR/venv-previous" ]; then
-        mv "$BASE_DIR/venv-previous" "$BASE_DIR/venv"
+    if [ "$VENV_REPLACED" -eq 1 ]; then
+        rm -rf "$BASE_DIR/venv"
+        if [ -d "$BASE_DIR/venv-previous" ]; then
+            mv "$BASE_DIR/venv-previous" "$BASE_DIR/venv"
+        fi
     fi
 
-    rm -f "$BASE_DIR/bin/borg"
-    if [ -f "$BASE_DIR/bin/borg.previous" ]; then
-        mv "$BASE_DIR/bin/borg.previous" "$BASE_DIR/bin/borg"
+    if [ "$BORG_REPLACED" -eq 1 ]; then
+        rm -f "$BASE_DIR/bin/borg"
+        if [ -f "$BASE_DIR/bin/borg.previous" ]; then
+            mv "$BASE_DIR/bin/borg.previous" "$BASE_DIR/bin/borg"
+        fi
     fi
+
+    ROLLBACK_ACTIVE=0
 }
+
+handle_exit() {
+    exit_status="$?"
+    trap - EXIT HUP INT TERM
+    if [ "$ROLLBACK_ACTIVE" -eq 1 ]; then
+        rollback_install
+    fi
+    exit "$exit_status"
+}
+
+ROLLBACK_ACTIVE=0
+VENV_REPLACED=0
+BORG_REPLACED=0
+trap handle_exit EXIT
+trap 'exit 1' HUP INT TERM
 
 # ---- 1. virtualenv zipapp (bypasses ensurepip + PEP 668) -------------------
 echo "==> Fetching virtualenv.pyz"
@@ -236,14 +257,6 @@ if ! python3 "$BASE_DIR/virtualenv.pyz.new" --version | grep -F "virtualenv $VIR
     exit 1
 fi
 mv "$BASE_DIR/virtualenv.pyz.new" "$BASE_DIR/virtualenv.pyz"
-
-echo "==> Building replacement venv at $BASE_DIR/venv-new"
-rm -rf "$BASE_DIR/venv-new"
-python3 "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/venv-new"
-
-echo "==> Installing borgmatic into the venv (pure Python -- no compiler needed)"
-"$BASE_DIR/venv-new/bin/pip" install "borgmatic==$BORGMATIC_VERSION"
-"$BASE_DIR/venv-new/bin/borgmatic" --version
 
 # ---- 2. Borg standalone binary (avoids building borgbackup from source) ---
 echo "==> Fetching Borg $BORG_VERSION standalone binary ($BORG_ASSET)"
@@ -260,31 +273,32 @@ fi
 chmod 700 "$BASE_DIR/tmp"
 
 # ---- 4. Install verified replacements --------------------------------------
-# Build and test first so a download or installation failure leaves the
-# currently working venv and Borg binary untouched. Keep one previous working
-# generation after success for an easy manual rollback.
+# All downloads are verified before this point. Python console scripts contain
+# absolute interpreter paths, so the venv must be created directly at its final
+# path; a completed venv cannot safely be renamed from venv-new to venv. Keep
+# one previous working generation and restore it automatically on any failure.
 echo "==> Installing verified replacements"
+rm -rf "$BASE_DIR/venv-new"
 rm -rf "$BASE_DIR/venv-previous"
 if [ -d "$BASE_DIR/venv" ]; then
     mv "$BASE_DIR/venv" "$BASE_DIR/venv-previous"
 fi
-if mv "$BASE_DIR/venv-new" "$BASE_DIR/venv"; then
-    :
-else
-    if [ -d "$BASE_DIR/venv-previous" ]; then
-        mv "$BASE_DIR/venv-previous" "$BASE_DIR/venv"
-    fi
-    exit 1
-fi
+VENV_REPLACED=1
+ROLLBACK_ACTIVE=1
+
+echo "==> Building replacement venv at $BASE_DIR/venv"
+python3 "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/venv"
+
+echo "==> Installing borgmatic into the venv (pure Python -- no compiler needed)"
+"$BASE_DIR/venv/bin/pip" install "borgmatic==$BORGMATIC_VERSION"
+"$BASE_DIR/venv/bin/borgmatic" --version
 
 rm -f "$BASE_DIR/bin/borg.previous"
 if [ -f "$BASE_DIR/bin/borg" ]; then
     mv "$BASE_DIR/bin/borg" "$BASE_DIR/bin/borg.previous"
 fi
-if ! mv "$BASE_DIR/bin/borg.new" "$BASE_DIR/bin/borg"; then
-    rollback_install
-    exit 1
-fi
+BORG_REPLACED=1
+mv "$BASE_DIR/bin/borg.new" "$BASE_DIR/bin/borg"
 
 # ---- 5. Wrapper script for `borg` invocations ------------------------------
 # This wrapper is used TWO ways, both load-bearing:
@@ -320,7 +334,6 @@ if TMPDIR="$BASE_DIR/tmp" "$BASE_DIR/bin/borg" --version; then
     echo "    Borg OK."
 else
     echo "    Borg failed to run. Check glibc compatibility (asset: $BORG_ASSET) and TMPDIR permissions." >&2
-    rollback_install
     exit 1
 fi
 
@@ -329,9 +342,11 @@ if "$BASE_DIR/venv/bin/borgmatic" --version; then
     echo "    borgmatic OK."
 else
     echo "    borgmatic failed to run." >&2
-    rollback_install
     exit 1
 fi
+
+ROLLBACK_ACTIVE=0
+trap - EXIT HUP INT TERM
 
 cat <<EOF
 

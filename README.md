@@ -169,10 +169,13 @@ Borg binary:
 /mnt/apps/borgmatic/bin/borg.previous
 ```
 
-The installer automatically restores them if its final checks fail. For a
-manual rollback after a later operational problem, first make sure no backup is
-running, then move the current generation aside and restore both previous
-items. Do not restore only one half of the pair.
+The venv is built directly at its final path because Python console scripts
+embed absolute interpreter paths and are not safely relocatable. The installer
+automatically restores the previous generation if any command fails or the
+installer is interrupted after replacement begins. For a manual rollback after
+a later operational problem, first make sure no backup is running, then move
+the current generation aside and restore both previous items. Do not restore
+only one half of the pair.
 
 ## Updating pinned versions
 
