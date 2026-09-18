@@ -147,7 +147,7 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.0.2"
+SCRIPT_VERSION="1.0.3"
 BASE_DIR="/mnt/apps/borgmatic"
 BORGMATIC_VERSION="2.1.7"
 BORG_VERSION="1.4.5"
@@ -319,7 +319,7 @@ cat > "$BASE_DIR/bin/borg-wrapper.sh" <<WRAPPER_EOF
 export TMPDIR=$BASE_DIR/tmp
 exec $BASE_DIR/bin/borg "\$@"
 WRAPPER_EOF
-chmod +x "$BASE_DIR/bin/borg-wrapper.sh"
+chmod 755 "$BASE_DIR/bin/borg-wrapper.sh"
 
 # ---- 6. Shell aliases (survive on the dataset, not the OS image) ----------
 echo "==> Writing aliases.sh"
@@ -327,6 +327,7 @@ cat > "$BASE_DIR/aliases.sh" <<ALIASES_EOF
 alias borgmatic='sudo $BASE_DIR/venv/bin/borgmatic -c $BASE_DIR/config.yaml'
 alias borg='sudo $BASE_DIR/bin/borg-wrapper.sh'
 ALIASES_EOF
+chmod 644 "$BASE_DIR/aliases.sh"
 
 # ---- 7. Sanity checks -------------------------------------------------------
 echo "==> Verifying Borg binary runs (using TMPDIR=$BASE_DIR/tmp)"

@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented here.
 
+## 1.0.3 - 2026-09-18
+
+- Set generated `aliases.sh` to mode 0644 so `truenas_admin` can source it
+  after a fresh root-run installation with the private umask.
+- Set `borg-wrapper.sh` explicitly to mode 0755.
+
 ## 1.0.2 - 2026-09-18
 
 - Pinned borgmatic 2.1.7 to match the existing working TrueNAS installation
