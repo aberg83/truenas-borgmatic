@@ -1,0 +1,14 @@
+# Ignore everything by default
+*
+
+# Explicitly version-controlled files
+!.gitignore
+!README.md
+!CHANGELOG.md
+!config.yaml.example
+!setup-borgmatic.sh
+
+# Continuous integration
+!.github/
+!.github/workflows/
+!.github/workflows/shellcheck.yml
