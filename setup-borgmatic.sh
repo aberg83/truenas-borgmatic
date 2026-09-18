@@ -34,7 +34,9 @@
 #   sudo sh setup-borgmatic.sh                  Install or upgrade.
 #   sudo sh setup-borgmatic.sh --check           Verify an existing install
 #                                                 only -- no downloads, no
-#                                                 replacement, nothing mutated.
+#                                                 replacement, and no persistent
+#                                                 install changes. Borg uses the
+#                                                 private tmp directory briefly.
 #                                                 Safe to run any time,
 #                                                 including while a backup is
 #                                                 in progress. Use this right
@@ -44,9 +46,9 @@
 #   sudo sh setup-borgmatic.sh --simulate-failure
 #                                                 Runs a REAL install, but
 #                                                 deliberately fails partway
-#                                                 through -- right after your
-#                                                 current venv/Borg binary
-#                                                 have been moved aside --
+#                                                 through -- after replacement
+#                                                 venv and Borg binaries are
+#                                                 installed --
 #                                                 to prove the automatic
 #                                                 rollback actually restores
 #                                                 them. Requires an existing
@@ -74,8 +76,9 @@
 # execute at the same time, and two overlapping backup runs (if one ever
 # takes longer than your schedule interval) can't stack either. This
 # requires your TrueNAS Cron Job command to be flock-wrapped -- see step 4
-# below. --check does NOT take this lock (it's read-only and safe to run
-# concurrently with a real backup). The interactive `borgmatic`/`borg`
+# below. --check does NOT take this lock (it makes no persistent install
+# changes and is safe to run concurrently with a real backup). The interactive
+# `borgmatic`/`borg`
 # aliases are deliberately NOT flock-wrapped: a `borgmatic mount` session
 # left open would otherwise silently block every subsequent cron run for as
 # long as it stayed mounted, which is a worse failure mode than the rare
@@ -205,7 +208,7 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.1.1"
 BASE_DIR="/mnt/apps/borgmatic"
 BORGMATIC_VERSION="2.1.7"
 BORG_VERSION="1.4.5"
@@ -239,13 +242,6 @@ for arg in "$@"; do
     esac
 done
 
-for required_command in curl python3 sha256sum awk grep flock; do
-    if ! command -v "$required_command" >/dev/null 2>&1; then
-        echo "ERROR: Required command not found: $required_command" >&2
-        exit 1
-    fi
-done
-
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root (use: sudo sh $0)" >&2
     exit 1
@@ -259,8 +255,6 @@ fi
 
 echo "==> setup-borgmatic.sh $SCRIPT_VERSION ($ACTION)"
 echo "==> Using base directory: $BASE_DIR"
-mkdir -p "$BASE_DIR/bin" "$BASE_DIR/tmp" "$BASE_DIR/ssh"
-chmod 700 "$BASE_DIR/ssh" "$BASE_DIR/tmp"
 
 verify_sha256() {
     expected="$1"
@@ -282,7 +276,7 @@ download() {
 }
 
 # Shared by a normal install's final sanity check and standalone --check
-# mode. Never downloads or replaces anything -- read-only verification.
+# mode. Never downloads, replaces, or changes persistent install files.
 run_verification() {
     echo "==> Verifying Borg binary runs (using TMPDIR=$BASE_DIR/tmp)"
     if TMPDIR="$BASE_DIR/tmp" "$BASE_DIR/bin/borg" --version; then
@@ -301,7 +295,8 @@ run_verification() {
             return 1
         fi
     else
-        echo "WARNING: $BASE_DIR/bin/borg-wrapper.sh is missing or not executable." >&2
+        echo "ERROR: $BASE_DIR/bin/borg-wrapper.sh is missing or not executable." >&2
+        return 1
     fi
 
     echo "==> Verifying borgmatic runs"
@@ -326,7 +321,7 @@ run_verification() {
     fi
 }
 
-# ---- --check mode: read-only, no lock needed, no mutation ------------------
+# ---- --check mode: no persistent changes and no lock needed ----------------
 if [ "$ACTION" = "check" ]; then
     if [ ! -x "$BASE_DIR/bin/borg" ] || [ ! -x "$BASE_DIR/venv/bin/borgmatic" ]; then
         echo "ERROR: No existing installation found at $BASE_DIR to check." >&2
@@ -344,6 +339,13 @@ if [ "$ACTION" = "check" ]; then
     fi
 fi
 
+for required_command in curl python3 sha256sum awk grep flock; do
+    if ! command -v "$required_command" >/dev/null 2>&1; then
+        echo "ERROR: Required command not found: $required_command" >&2
+        exit 1
+    fi
+done
+
 # ---- install / simulate-failure: acquire the shared lock -------------------
 # Shared with the cron-invoked backup itself (see LOCKING above) so the
 # installer and a real backup run can never execute at the same time.
@@ -354,6 +356,9 @@ if ! flock -n 9; then
     echo "Wait for it to finish, then try again." >&2
     exit 1
 fi
+
+mkdir -p "$BASE_DIR/bin" "$BASE_DIR/tmp" "$BASE_DIR/ssh"
+chmod 700 "$BASE_DIR/ssh" "$BASE_DIR/tmp"
 
 rollback_install() {
     echo "ERROR: Installation failed; restoring previous installation." >&2
@@ -426,13 +431,6 @@ fi
 VENV_REPLACED=1
 ROLLBACK_ACTIVE=1
 
-if [ "$ACTION" = "simulate-failure" ]; then
-    echo ""
-    echo "==> --simulate-failure: your current venv was just moved aside."
-    echo "    Deliberately failing now to prove automatic rollback restores it."
-    exit 1
-fi
-
 echo "==> Building replacement venv at $BASE_DIR/venv"
 python3 "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/venv"
 
@@ -446,6 +444,13 @@ if [ -f "$BASE_DIR/bin/borg" ]; then
 fi
 BORG_REPLACED=1
 mv "$BASE_DIR/bin/borg.new" "$BASE_DIR/bin/borg"
+
+if [ "$ACTION" = "simulate-failure" ]; then
+    echo ""
+    echo "==> --simulate-failure: replacement venv and Borg are now installed."
+    echo "    Deliberately failing to prove both previous components are restored."
+    exit 1
+fi
 
 # ---- 5. Wrapper script for `borg` invocations ------------------------------
 # This wrapper is used TWO ways, both load-bearing:

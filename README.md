@@ -25,15 +25,17 @@ sudo sh setup-borgmatic.sh --simulate-failure  # prove the rollback path works
 sudo sh setup-borgmatic.sh --version        # print the script's version
 ```
 
-`--check` is read-only: no downloads, no replacement, nothing mutated. It's
-safe to run at any time, including while a backup is in progress, and is the
-right thing to run after a reboot or a TrueNAS update, before trusting the
+`--check` makes no persistent installation changes: it creates no install
+directories, changes no permissions, performs no downloads, and replaces
+nothing. Borg briefly uses its private temporary directory while its standalone
+binary runs and cleans up afterward. The check is safe during a backup and is
+the right thing to run after a reboot or TrueNAS update before trusting the
 nightly cron job.
 
-`--simulate-failure` runs a real install but deliberately fails immediately
-after your current venv and Borg binary have been moved aside, to prove the
-automatic rollback genuinely restores them. It requires an existing working
-install. Run `--check` afterward to confirm the restored install works.
+`--simulate-failure` runs a real install but deliberately fails after the
+replacement venv and Borg binary are installed, proving that automatic rollback
+restores both previous components. It requires an existing working install. Run
+`--check` afterward to confirm the restored install works.
 
 ## Locking
 
@@ -210,8 +212,8 @@ For repeatable deployments, tag commits after they have passed a real backup
 and restore test:
 
 ```
-git tag -a v1.1.0 -m "Tested TrueNAS borgmatic installer with locking and self-test modes"
-git push origin v1.1.0
+git tag -a v1.1.1 -m "Tested TrueNAS borgmatic installer rollback and read-only checks"
+git push origin v1.1.1
 ```
 
 Deploy a specific tag on TrueNAS with:
@@ -219,7 +221,7 @@ Deploy a specific tag on TrueNAS with:
 ```
 cd /mnt/apps/borgmatic
 git fetch --tags
-git checkout --detach v1.1.0
+git checkout --detach v1.1.1
 sudo sh ./setup-borgmatic.sh
 ```
 

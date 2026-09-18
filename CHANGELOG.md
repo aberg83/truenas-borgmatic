@@ -2,7 +2,18 @@
 
 All notable changes to this repository are documented here.
 
-## 1.1.0 - 2026-09-17
+## 1.1.1 - 2026-09-18
+
+- Made `--check` non-mutating with respect to persistent install state by
+  entering check mode before command prerequisites, directory creation,
+  permission changes, or lock creation.
+- Treat a missing or non-executable Borg wrapper as a failed verification
+  instead of a warning.
+- Moved `--simulate-failure` until after both replacement components are
+  installed, so it exercises restoration of both the venv and Borg binary.
+- Corrected the 1.1.0 changelog date.
+
+## 1.1.0 - 2026-09-18
 
 - Added a shared `flock` lock file (`$BASE_DIR/borgmatic.lock`) between the
   installer and the cron-triggered backup run, so the two can never execute
