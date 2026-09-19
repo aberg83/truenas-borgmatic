@@ -22,4 +22,5 @@ jobs:
         run: shellcheck -s sh setup-borgmatic.sh
 
       - name: Validate example YAML syntax
-        run: ruby -e 'require "yaml"; YAML.safe_load_file("config.yaml.example", aliases: true)'
+        run: >-
+          ruby -e 'require "yaml"; YAML.safe_load_file("config.yaml.example", aliases: true)'
