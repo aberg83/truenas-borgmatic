@@ -208,7 +208,7 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.1.1"
+SCRIPT_VERSION="1.1.2"
 BASE_DIR="/mnt/apps/borgmatic"
 BORGMATIC_VERSION="2.1.7"
 BORG_VERSION="1.4.5"
@@ -361,7 +361,11 @@ mkdir -p "$BASE_DIR/bin" "$BASE_DIR/tmp" "$BASE_DIR/ssh"
 chmod 700 "$BASE_DIR/ssh" "$BASE_DIR/tmp"
 
 rollback_install() {
-    echo "ERROR: Installation failed; restoring previous installation." >&2
+    if [ "$ACTION" = "simulate-failure" ]; then
+        echo "==> Intentional simulated failure; restoring previous installation." >&2
+    else
+        echo "ERROR: Installation failed; restoring previous installation." >&2
+    fi
     if [ "$VENV_REPLACED" -eq 1 ]; then
         rm -rf "$BASE_DIR/venv"
         if [ -d "$BASE_DIR/venv-previous" ]; then
@@ -372,6 +376,18 @@ rollback_install() {
         rm -f "$BASE_DIR/bin/borg"
         if [ -f "$BASE_DIR/bin/borg.previous" ]; then
             mv "$BASE_DIR/bin/borg.previous" "$BASE_DIR/bin/borg"
+        fi
+    fi
+    if [ "$WRAPPER_REPLACED" -eq 1 ]; then
+        rm -f "$BASE_DIR/bin/borg-wrapper.sh"
+        if [ -f "$BASE_DIR/bin/borg-wrapper.sh.previous" ]; then
+            mv "$BASE_DIR/bin/borg-wrapper.sh.previous" "$BASE_DIR/bin/borg-wrapper.sh"
+        fi
+    fi
+    if [ "$VIRTUALENV_REPLACED" -eq 1 ]; then
+        rm -f "$BASE_DIR/virtualenv.pyz"
+        if [ -f "$BASE_DIR/virtualenv.pyz.previous" ]; then
+            mv "$BASE_DIR/virtualenv.pyz.previous" "$BASE_DIR/virtualenv.pyz"
         fi
     fi
     ROLLBACK_ACTIVE=0
@@ -390,6 +406,8 @@ handle_exit() {
 ROLLBACK_ACTIVE=0
 VENV_REPLACED=0
 BORG_REPLACED=0
+WRAPPER_REPLACED=0
+VIRTUALENV_REPLACED=0
 trap handle_exit EXIT
 trap 'exit 1' HUP INT TERM
 
@@ -401,6 +419,11 @@ if ! python3 "$BASE_DIR/virtualenv.pyz.new" --version | grep -F "virtualenv $VIR
     echo "ERROR: Downloaded virtualenv.pyz is not version $VIRTUALENV_VERSION." >&2
     exit 1
 fi
+rm -f "$BASE_DIR/virtualenv.pyz.previous"
+if [ -f "$BASE_DIR/virtualenv.pyz" ]; then
+    mv "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/virtualenv.pyz.previous"
+fi
+VIRTUALENV_REPLACED=1
 mv "$BASE_DIR/virtualenv.pyz.new" "$BASE_DIR/virtualenv.pyz"
 
 # ---- 2. Borg standalone binary (avoids building borgbackup from source) ---
@@ -445,13 +468,6 @@ fi
 BORG_REPLACED=1
 mv "$BASE_DIR/bin/borg.new" "$BASE_DIR/bin/borg"
 
-if [ "$ACTION" = "simulate-failure" ]; then
-    echo ""
-    echo "==> --simulate-failure: replacement venv and Borg are now installed."
-    echo "    Deliberately failing to prove both previous components are restored."
-    exit 1
-fi
-
 # ---- 5. Wrapper script for `borg` invocations ------------------------------
 # This wrapper is used TWO ways, both load-bearing:
 #   (a) as the `borg` shell alias, for standalone interactive commands -- a
@@ -466,12 +482,25 @@ fi
 # Both cases are solved the same way: set TMPDIR from inside a script that
 # then execs the real binary, rather than trying to pass it in from outside.
 echo "==> Writing borg-wrapper.sh"
+rm -f "$BASE_DIR/bin/borg-wrapper.sh.previous"
+if [ -f "$BASE_DIR/bin/borg-wrapper.sh" ]; then
+    mv "$BASE_DIR/bin/borg-wrapper.sh" "$BASE_DIR/bin/borg-wrapper.sh.previous"
+fi
+WRAPPER_REPLACED=1
 cat > "$BASE_DIR/bin/borg-wrapper.sh" <<WRAPPER_EOF
 #!/bin/sh
 export TMPDIR=$BASE_DIR/tmp
 exec $BASE_DIR/bin/borg "\$@"
 WRAPPER_EOF
 chmod 755 "$BASE_DIR/bin/borg-wrapper.sh"
+
+if [ "$ACTION" = "simulate-failure" ]; then
+    echo ""
+    echo "==> --simulate-failure: replacement virtualenv bootstrap, venv, Borg binary,"
+    echo "    and Borg wrapper are now installed."
+    echo "    Deliberately failing to prove all previous components are restored."
+    exit 1
+fi
 
 # ---- 6. Shell aliases (survive on the dataset, not the OS image) ----------
 # Deliberately NOT flock-wrapped -- see LOCKING above.
@@ -502,8 +531,9 @@ cat <<EOF
 ==============================================================================
 Done. venv, Borg binary, wrapper script, and aliases.sh are all in place.
 
-One previous venv and Borg binary are retained as venv-previous and
-bin/borg.previous when an earlier installation existed.
+One previous installation generation is retained when earlier components
+existed: venv-previous, bin/borg.previous, bin/borg-wrapper.sh.previous, and
+virtualenv.pyz.previous.
 
 Still to do manually -- see the "AFTER RUNNING" section in this script's
 header comments for the full list (config.yaml, passphrase file, rsync.net
