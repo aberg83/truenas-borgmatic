@@ -2,6 +2,19 @@
 
 All notable changes to this repository are documented here.
 
+## 1.1.2 - 2026-09-19
+
+- Extended automatic rollback to include the downloaded `virtualenv.pyz`
+  bootstrap and generated Borg wrapper, keeping the full installed generation
+  consistent after a failed upgrade.
+- Moved `--simulate-failure` until after the replacement wrapper is written,
+  so the rollback test now exercises the virtualenv bootstrap, venv, Borg
+  binary, and wrapper together.
+- Made deliberate `--simulate-failure` rollback output clearly identify the
+  failure as intentional rather than reporting it as an unexpected install
+  failure.
+- Added CI validation that `config.yaml.example` is syntactically valid YAML.
+
 ## 1.1.1 - 2026-09-18
 
 - Made `--check` non-mutating with respect to persistent install state by
