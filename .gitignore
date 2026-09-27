@@ -13,3 +13,6 @@
 !.github/
 !.github/workflows/
 !.github/workflows/shellcheck.yml
+!.github/workflows/pinned-versions.yml
+!.github/scripts/
+!.github/scripts/check-pinned-versions.sh

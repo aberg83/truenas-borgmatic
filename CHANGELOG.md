@@ -2,6 +2,27 @@
 
 All notable changes to this repository are documented here.
 
+## 1.3.0 - 2026-09-27
+
+- The installer refuses to run, before changing anything, when the system
+  `python3` isn't the version `requirements.txt` was resolved for (new
+  `REQUIREMENTS_PYTHON` setting, currently 3.11). `--check` warns about the
+  mismatch. Previously a TrueNAS Python bump would only surface as a failed
+  install and rollback.
+- Added a monthly **Pinned version check** workflow and
+  `.github/scripts/check-pinned-versions.sh`: compares the borgmatic, Borg
+  (within the pinned series) and virtualenv pins against upstream, and opens,
+  refreshes or closes a single tracking issue. It never changes pins.
+- CI reads the Python version from `REQUIREMENTS_PYTHON` instead of
+  hard-coding it, and shellchecks the new script.
+- `config.yaml.example` documents why borgmatic's `spot` check is not used
+  with ZFS property-based dataset discovery.
+- Bumped borgmatic 2.1.7 -> 2.1.9 and regenerated `requirements.txt` (adds
+  `psutil`, a new borgmatic dependency, installed from a binary wheel). The
+  only breaking changes in 2.1.8/2.1.9 affect Borg 2. 2.1.9 deprecates
+  boolean `statistics: true/false`; existing configs still validate, with a
+  warning.
+
 ## 1.2.0 - 2026-09-27
 
 - Install borgmatic and its full dependency tree from a new hash-locked

@@ -50,3 +50,9 @@ monitoring_verbosity: 1
 #     - name: archives
 #       frequency: 8 weeks
 # check_last: 3
+#
+# Don't add the "spot" check here: it builds its file list from
+# source_directories and doesn't run the ZFS hook, so with property-based
+# dataset discovery it would compare an empty source list against a full
+# archive and always fail. It also needs xxh64sum, which TrueNAS doesn't ship.
+# Periodic test restores (README "Verification") cover the same ground.

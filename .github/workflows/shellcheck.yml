@@ -16,21 +16,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Check POSIX shell syntax
-        run: sh -n setup-borgmatic.sh
+        run: |
+          sh -n setup-borgmatic.sh
+          sh -n .github/scripts/check-pinned-versions.sh
 
       - name: Run ShellCheck
-        run: shellcheck -s sh setup-borgmatic.sh
+        run: shellcheck -s sh setup-borgmatic.sh .github/scripts/check-pinned-versions.sh
 
       - name: Validate example YAML syntax
         run: >-
           ruby -e 'require "yaml"; YAML.safe_load_file("config.yaml.example", aliases: true)'
 
-      # Same Python minor version as TrueNAS SCALE, which requirements.txt
-      # is resolved for.
+      # Same Python minor version the installer enforces (REQUIREMENTS_PYTHON),
+      # which requirements.txt is resolved for.
+      - name: Read required Python version
+        id: python
+        run: |
+          version="$(sed -n 's/^REQUIREMENTS_PYTHON="\(.*\)"$/\1/p' setup-borgmatic.sh)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ steps.python.outputs.version }}
 
       # Install requirements.txt exactly as the installer does, confirm it
       # pins the same borgmatic as the script, then schema-check the example

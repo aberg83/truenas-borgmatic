@@ -240,15 +240,19 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.3.0"
 BASE_DIR="/mnt/apps/borgmatic"
-BORGMATIC_VERSION="2.1.7"
+BORGMATIC_VERSION="2.1.9"
 BORG_VERSION="1.4.5"
 BORG_ASSET="borg-linux-glibc231-x86_64"
 BORG_SHA256="c8457f70660064d0f45b38283ab4cc65b342970012013201d3aec713a75898fb"
 BORG_URL="https://github.com/borgbackup/borg/releases/download/${BORG_VERSION}/${BORG_ASSET}"
 VIRTUALENV_VERSION="21.7.4"
 VIRTUALENV_URL="https://github.com/pypa/virtualenv/releases/download/${VIRTUALENV_VERSION}/virtualenv.pyz"
+# The system Python minor version requirements.txt was resolved for. The
+# installer refuses to run on any other; regenerate requirements.txt on the
+# new Python and update this together with it.
+REQUIREMENTS_PYTHON="3.11"
 VIRTUALENV_SHA256="2dfdb6785b762b8a7a7a31d413c16516aa785552d05f61435b072fde1cb340cc"
 LOCK_FILE="$BASE_DIR/borgmatic.lock"
 # -----------------------------------------------------------------------------
@@ -388,6 +392,11 @@ run_verification() {
     fi
 }
 
+# Prints the system python3's major.minor version, e.g. "3.11".
+system_python_version() {
+    python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])'
+}
+
 # Informational only: flags an installed generation that differs from the
 # versions pinned in this copy of the script (e.g. after a `git pull` that
 # hasn't been installed yet). Never fails the check.
@@ -396,6 +405,11 @@ report_version_drift() {
     if [ "$installed_borgmatic" != "$BORGMATIC_VERSION" ]; then
         echo "WARNING: installed borgmatic is '$installed_borgmatic'; this script pins $BORGMATIC_VERSION."
         echo "         Run the installer without --check to bring them in line."
+    fi
+    system_python="$(system_python_version || true)"
+    if [ "$system_python" != "$REQUIREMENTS_PYTHON" ]; then
+        echo "WARNING: system python3 is '$system_python'; requirements.txt is resolved for $REQUIREMENTS_PYTHON."
+        echo "         Regenerate requirements.txt on this Python before the next install."
     fi
     installed_borg_sha256="$(sha256sum "$BASE_DIR/bin/borg" | awk '{print $1}')"
     if [ "$installed_borg_sha256" != "$BORG_SHA256" ]; then
@@ -450,6 +464,15 @@ for required_command in curl python3 sha256sum awk grep flock; do
         exit 1
     fi
 done
+
+SYSTEM_PYTHON="$(system_python_version)"
+if [ "$SYSTEM_PYTHON" != "$REQUIREMENTS_PYTHON" ]; then
+    echo "ERROR: system python3 is $SYSTEM_PYTHON, but requirements.txt is resolved for $REQUIREMENTS_PYTHON." >&2
+    echo "Likely a TrueNAS update changed the OS Python. Regenerate requirements.txt on" >&2
+    echo "Python $SYSTEM_PYTHON and update REQUIREMENTS_PYTHON -- see \"Updating pinned" >&2
+    echo "versions\" in README.md. Nothing has been changed." >&2
+    exit 1
+fi
 
 # ---- install / simulate-failure: acquire the shared lock -------------------
 # Shared with the cron-invoked backup itself (see LOCKING above) so the

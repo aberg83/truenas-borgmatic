@@ -1,0 +1,60 @@
+name: Pinned version check
+
+# Monthly check of the versions pinned in setup-borgmatic.sh against upstream.
+# Opens (or refreshes) a single tracking issue when updates are available and
+# closes it once everything is current again. It never changes any pins.
+on:
+  schedule:
+    - cron: "17 9 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: pinned-versions
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_TITLE: "Pinned versions: updates available"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compare pinned versions with upstream
+        id: compare
+        run: |
+          set +e
+          sh .github/scripts/check-pinned-versions.sh > "$RUNNER_TEMP/report.md"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/report.md"
+          case "$status" in
+            0) echo "updates=false" >> "$GITHUB_OUTPUT" ;;
+            10) echo "updates=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Version check failed (exit $status)"; exit "$status" ;;
+          esac
+
+      - name: Open or refresh tracking issue
+        if: steps.compare.outputs.updates == 'true'
+        run: |
+          number="$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" \
+              --json number,title --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" | head -n 1)"
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file "$RUNNER_TEMP/report.md"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body-file "$RUNNER_TEMP/report.md"
+          fi
+
+      - name: Close tracking issue when everything is current
+        if: steps.compare.outputs.updates == 'false'
+        run: |
+          number="$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" \
+              --json number,title --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" | head -n 1)"
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment "All pinned versions are current as of $(date -u +%Y-%m-%d)."
+          fi
