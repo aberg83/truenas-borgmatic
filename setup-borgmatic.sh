@@ -137,9 +137,10 @@
 #            send_logs: true
 #        monitoring_verbosity: 1
 #
-#   2. Passphrase file (if using encryption_passcommand as above):
-#        sudo sh -c 'echo -n "your-actual-passphrase" > BASE_DIR/passphrase'
-#        sudo chmod 600 BASE_DIR/passphrase
+#   2. Passphrase file (if using encryption_passcommand as above). Type the
+#      passphrase at the silent prompt, so it never lands in shell history or
+#      a process listing, and the file is never briefly world-readable:
+#        sudo sh -c 'umask 077; stty -echo; IFS= read -r p; stty echo; printf %s "$p" > BASE_DIR/passphrase'
 #
 #   3. rsync.net authorized_keys needs a forced command restricted to this
 #      repo, using the versioned remote binary name (borg14, borg15, etc. --
@@ -208,7 +209,7 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.1.2"
+SCRIPT_VERSION="1.1.3"
 BASE_DIR="/mnt/apps/borgmatic"
 BORGMATIC_VERSION="2.1.7"
 BORG_VERSION="1.4.5"
@@ -321,6 +322,22 @@ run_verification() {
     fi
 }
 
+# Informational only: flags an installed generation that differs from the
+# versions pinned in this copy of the script (e.g. after a `git pull` that
+# hasn't been installed yet). Never fails the check.
+report_version_drift() {
+    installed_borgmatic="$("$BASE_DIR/venv/bin/borgmatic" --version 2>/dev/null || true)"
+    if [ "$installed_borgmatic" != "$BORGMATIC_VERSION" ]; then
+        echo "WARNING: installed borgmatic is '$installed_borgmatic'; this script pins $BORGMATIC_VERSION."
+        echo "         Run the installer without --check to bring them in line."
+    fi
+    installed_borg_sha256="$(sha256sum "$BASE_DIR/bin/borg" | awk '{print $1}')"
+    if [ "$installed_borg_sha256" != "$BORG_SHA256" ]; then
+        echo "WARNING: installed Borg binary does not match the pinned $BORG_VERSION ($BORG_ASSET) checksum."
+        echo "         Run the installer without --check to bring them in line."
+    fi
+}
+
 # ---- --check mode: no persistent changes and no lock needed ----------------
 if [ "$ACTION" = "check" ]; then
     if [ ! -x "$BASE_DIR/bin/borg" ] || [ ! -x "$BASE_DIR/venv/bin/borgmatic" ]; then
@@ -329,12 +346,21 @@ if [ "$ACTION" = "check" ]; then
         exit 1
     fi
     if run_verification; then
+        report_version_drift
         echo ""
         echo "==> All checks passed."
         exit 0
     else
         echo ""
         echo "==> One or more checks failed. See above." >&2
+        exit 1
+    fi
+fi
+
+if [ "$ACTION" = "simulate-failure" ]; then
+    if [ ! -x "$BASE_DIR/bin/borg" ] || [ ! -x "$BASE_DIR/venv/bin/borgmatic" ]; then
+        echo "ERROR: --simulate-failure needs an existing installation to roll back to." >&2
+        echo "Run this script without arguments to install first." >&2
         exit 1
     fi
 fi
@@ -400,6 +426,7 @@ handle_exit() {
     if [ "$ROLLBACK_ACTIVE" -eq 1 ]; then
         rollback_install
     fi
+    rm -f "$BASE_DIR/virtualenv.pyz.new" "$BASE_DIR/bin/borg.new"
     exit "$exit_status"
 }
 
@@ -411,6 +438,10 @@ VIRTUALENV_REPLACED=0
 trap handle_exit EXIT
 trap 'exit 1' HUP INT TERM
 
+# Both downloads are fetched and verified before anything installed is moved
+# aside, so a network or checksum failure leaves the current generation
+# completely untouched.
+
 # ---- 1. virtualenv zipapp (bypasses ensurepip + PEP 668) -------------------
 echo "==> Fetching virtualenv.pyz"
 download "$VIRTUALENV_URL" "$BASE_DIR/virtualenv.pyz.new"
@@ -419,12 +450,6 @@ if ! python3 "$BASE_DIR/virtualenv.pyz.new" --version | grep -F "virtualenv $VIR
     echo "ERROR: Downloaded virtualenv.pyz is not version $VIRTUALENV_VERSION." >&2
     exit 1
 fi
-rm -f "$BASE_DIR/virtualenv.pyz.previous"
-if [ -f "$BASE_DIR/virtualenv.pyz" ]; then
-    mv "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/virtualenv.pyz.previous"
-fi
-VIRTUALENV_REPLACED=1
-mv "$BASE_DIR/virtualenv.pyz.new" "$BASE_DIR/virtualenv.pyz"
 
 # ---- 2. Borg standalone binary (avoids building borgbackup from source) ---
 echo "==> Fetching Borg $BORG_VERSION standalone binary ($BORG_ASSET)"
@@ -446,13 +471,20 @@ chmod 700 "$BASE_DIR/tmp"
 # path; a completed venv cannot safely be renamed from venv-new to venv. Keep
 # one previous working generation and restore it automatically on any failure.
 echo "==> Installing verified replacements"
+ROLLBACK_ACTIVE=1
+rm -f "$BASE_DIR/virtualenv.pyz.previous"
+if [ -f "$BASE_DIR/virtualenv.pyz" ]; then
+    mv "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/virtualenv.pyz.previous"
+fi
+VIRTUALENV_REPLACED=1
+mv "$BASE_DIR/virtualenv.pyz.new" "$BASE_DIR/virtualenv.pyz"
+
 rm -rf "$BASE_DIR/venv-new"
 rm -rf "$BASE_DIR/venv-previous"
 if [ -d "$BASE_DIR/venv" ]; then
     mv "$BASE_DIR/venv" "$BASE_DIR/venv-previous"
 fi
 VENV_REPLACED=1
-ROLLBACK_ACTIVE=1
 
 echo "==> Building replacement venv at $BASE_DIR/venv"
 python3 "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/venv"
@@ -516,11 +548,9 @@ if ! run_verification; then
     exit 1
 fi
 
-if [ -f "$BASE_DIR/config.yaml" ]; then
-    :  # already validated inside run_verification
-else
-    echo "NOTE: no config.yaml yet -- see the AFTER RUNNING section in this"
-    echo "      script's header comments for the required settings."
+if [ ! -f "$BASE_DIR/config.yaml" ]; then
+    echo "      See the AFTER RUNNING section in this script's header comments"
+    echo "      for the required config.yaml settings."
 fi
 
 ROLLBACK_ACTIVE=0

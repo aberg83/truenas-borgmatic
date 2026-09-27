@@ -24,3 +24,14 @@ jobs:
       - name: Validate example YAML syntax
         run: >-
           ruby -e 'require "yaml"; YAML.safe_load_file("config.yaml.example", aliases: true)'
+
+      # Schema-check the example against the exact borgmatic version the
+      # installer pins, so an option rename or removal is caught here rather
+      # than at the first nightly run after an upgrade.
+      - name: Validate example against pinned borgmatic schema
+        run: |
+          version="$(sed -n 's/^BORGMATIC_VERSION="\(.*\)"$/\1/p' setup-borgmatic.sh)"
+          test -n "$version"
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet "borgmatic==$version"
+          "$RUNNER_TEMP/venv/bin/borgmatic" config validate --config config.yaml.example

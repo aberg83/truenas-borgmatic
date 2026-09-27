@@ -30,12 +30,15 @@ directories, changes no permissions, performs no downloads, and replaces
 nothing. Borg briefly uses its private temporary directory while its standalone
 binary runs and cleans up afterward. The check is safe during a backup and is
 the right thing to run after a reboot or TrueNAS update before trusting the
-nightly cron job.
+nightly cron job. It also warns (without failing) when the installed borgmatic
+version or Borg binary differs from the versions pinned in the script, for
+example after a `git pull` that has not been installed yet.
 
 `--simulate-failure` runs a real install but deliberately fails after the
-replacement venv and Borg binary are installed, proving that automatic rollback
-restores both previous components. It requires an existing working install. Run
-`--check` afterward to confirm the restored install works.
+replacement virtualenv bootstrap, venv, Borg binary, and Borg wrapper are
+installed, proving that automatic rollback restores all previous components. It
+refuses to run without an existing install to roll back to. Run `--check`
+afterward to confirm the restored install works.
 
 ## Locking
 
@@ -186,14 +189,16 @@ recovery source.
 
 Do not update while a backup is running -- the installer now enforces this
 itself via the shared lock file, but check anyway before you start. Fetch and
-inspect changes first:
+review the incoming changes *before* applying them (an update may contain more
+than one commit, so compare against the fetched branch rather than `HEAD~1`):
 
 ```
 cd /mnt/apps/borgmatic
 git status
-git pull --ff-only
-git log -1 --oneline
-git diff HEAD~1 -- setup-borgmatic.sh
+git fetch origin
+git log --oneline HEAD..origin/main
+git diff HEAD origin/main -- setup-borgmatic.sh
+git merge --ff-only origin/main
 ```
 
 Then run the updated installer manually:
@@ -212,8 +217,8 @@ For repeatable deployments, tag commits after they have passed a real backup
 and restore test:
 
 ```
-git tag -a v1.1.1 -m "Tested TrueNAS borgmatic installer rollback and read-only checks"
-git push origin v1.1.1
+git tag -a vX.Y.Z -m "Tested TrueNAS borgmatic installer rollback and read-only checks"
+git push origin vX.Y.Z
 ```
 
 Deploy a specific tag on TrueNAS with:
@@ -221,7 +226,7 @@ Deploy a specific tag on TrueNAS with:
 ```
 cd /mnt/apps/borgmatic
 git fetch --tags
-git checkout --detach v1.1.1
+git checkout --detach vX.Y.Z
 sudo sh ./setup-borgmatic.sh
 ```
 
@@ -248,13 +253,19 @@ update, or just periodically -- without re-running the full installer.
 
 ## Rollback
 
-When replacing an existing installation, the script retains one prior venv and
-Borg binary:
+When replacing an existing installation, the script retains one prior
+generation of every installed component:
 
 ```
 /mnt/apps/borgmatic/venv-previous
 /mnt/apps/borgmatic/bin/borg.previous
+/mnt/apps/borgmatic/bin/borg-wrapper.sh.previous
+/mnt/apps/borgmatic/virtualenv.pyz.previous
 ```
+
+Both downloads are fetched and checksum-verified before any installed file is
+moved aside, so a network or checksum failure leaves the current installation
+untouched.
 
 The venv is built directly at its final path because Python console scripts
 embed absolute interpreter paths and are not safely relocatable. The installer
@@ -269,8 +280,8 @@ sudo sh setup-borgmatic.sh --check
 ```
 
 For a manual rollback after a later operational problem, first make sure no
-backup is running, then move the current generation aside and restore both
-previous items. Do not restore only one half of the pair.
+backup is running, then move the current generation aside and restore all
+of the previous items together. Do not restore only some of them.
 
 ## Updating pinned versions
 
