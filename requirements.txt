@@ -2,8 +2,9 @@
 # installs exactly this with `pip install --require-hashes --only-binary :all:`
 # and refuses to run if the borgmatic pin here differs from BORGMATIC_VERSION.
 #
-# Resolved for Python 3.11 (TrueNAS SCALE's Debian 12 Python). Regenerate it
-# whenever BORGMATIC_VERSION or the TrueNAS Python version changes -- see
+# Resolved for Python 3.11 (TrueNAS SCALE's Debian 12 Python), matching
+# REQUIREMENTS_PYTHON in setup-borgmatic.sh. Regenerate it whenever
+# BORGMATIC_VERSION or the TrueNAS Python version changes -- see
 # "Updating pinned versions" in README.md. Everything above the first blank
 # line is this hand-written header; everything below it is pip-compile output.
 

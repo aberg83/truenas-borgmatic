@@ -72,6 +72,8 @@ sanitized files:
 - `requirements.txt`
 - `setup-borgmatic.sh`
 - `.github/workflows/shellcheck.yml`
+- `.github/workflows/pinned-versions.yml`
+- `.github/scripts/check-pinned-versions.sh`
 
 The real configuration, passphrase, SSH keys, Borg security state, cache,
 virtual environments, binaries, lock file, and temporary files remain
@@ -322,17 +324,25 @@ of the previous items together. Do not restore only some of them.
 
 ## Updating pinned versions
 
-Pinned versions should be updated deliberately rather than automatically:
+Pinned versions should be updated deliberately rather than automatically.
+To make sure updates aren't missed, the **Pinned version check** workflow
+runs on the 1st of each month (or on demand from the Actions tab). It opens a
+single "Pinned versions: updates available" issue when borgmatic or Borg (within
+the pinned series, e.g. 1.4.x) has a newer release, refreshes it on later runs,
+and closes it once everything is current. It never changes a pin itself. A newer
+virtualenv is listed for information only.
+
 
 - review borgmatic and Borg releases once or twice per year;
 - keep the local and rsync.net Borg major/minor families compatible;
 - update the version, immutable download URL, and checksum together;
 - when bumping `BORGMATIC_VERSION`, or when a TrueNAS update changes the
   system Python minor version, regenerate `requirements.txt` with
-  [pip-tools](https://pip-tools.readthedocs.io/) on that same Python version
-  (the installer refuses to run if its borgmatic pin disagrees with the
-  script). This keeps the hand-written header and replaces everything below
-  it:
+  [pip-tools](https://pip-tools.readthedocs.io/) on that same Python version,
+  and set `REQUIREMENTS_PYTHON` in the script to match. The installer refuses
+  to run if its borgmatic pin disagrees with the script, or if the system
+  `python3` isn't `REQUIREMENTS_PYTHON` (`--check` warns about the latter).
+  This keeps the hand-written header and replaces everything below it:
 
   ```
   ( sed '/^$/q' requirements.txt
