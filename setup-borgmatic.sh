@@ -242,7 +242,7 @@ umask 077
 # ---- Configuration -- adjust these if your paths/versions differ ----------
 SCRIPT_VERSION="1.3.0"
 BASE_DIR="/mnt/apps/borgmatic"
-BORGMATIC_VERSION="2.1.7"
+BORGMATIC_VERSION="2.1.9"
 BORG_VERSION="1.4.5"
 BORG_ASSET="borg-linux-glibc231-x86_64"
 BORG_SHA256="c8457f70660064d0f45b38283ab4cc65b342970012013201d3aec713a75898fb"

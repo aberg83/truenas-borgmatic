@@ -17,6 +17,11 @@ All notable changes to this repository are documented here.
   hard-coding it, and shellchecks the new script.
 - `config.yaml.example` documents why borgmatic's `spot` check is not used
   with ZFS property-based dataset discovery.
+- Bumped borgmatic 2.1.7 -> 2.1.9 and regenerated `requirements.txt` (adds
+  `psutil`, a new borgmatic dependency, installed from a binary wheel). The
+  only breaking changes in 2.1.8/2.1.9 affect Borg 2. 2.1.9 deprecates
+  boolean `statistics: true/false`; existing configs still validate, with a
+  warning.
 
 ## 1.2.0 - 2026-09-27
 
