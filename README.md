@@ -14,7 +14,10 @@ The installer works around three TrueNAS constraints:
 
 The script uses a pinned virtualenv zipapp, a pinned official Borg standalone
 binary, and an exec-enabled private temporary directory on the persistent ZFS
-dataset. Downloads are checksum-verified before installation.
+dataset. Downloads are checksum-verified before installation, and borgmatic plus
+its entire Python dependency tree is installed from the hash-locked
+`requirements.txt` (wheels only, `--require-hashes`). virtualenv and pip caches
+are kept off `/root`.
 
 ## Modes
 
@@ -23,6 +26,7 @@ sudo sh setup-borgmatic.sh                  # install or upgrade
 sudo sh setup-borgmatic.sh --check          # verify an existing install only
 sudo sh setup-borgmatic.sh --simulate-failure  # prove the rollback path works
 sudo sh setup-borgmatic.sh --version        # print the script's version
+sh setup-borgmatic.sh --help                # print usage
 ```
 
 `--check` makes no persistent installation changes: it creates no install
@@ -30,12 +34,15 @@ directories, changes no permissions, performs no downloads, and replaces
 nothing. Borg briefly uses its private temporary directory while its standalone
 binary runs and cleans up afterward. The check is safe during a backup and is
 the right thing to run after a reboot or TrueNAS update before trusting the
-nightly cron job.
+nightly cron job. It also warns (without failing) when the installed borgmatic
+version or Borg binary differs from the versions pinned in the script, for
+example after a `git pull` that has not been installed yet.
 
 `--simulate-failure` runs a real install but deliberately fails after the
-replacement venv and Borg binary are installed, proving that automatic rollback
-restores both previous components. It requires an existing working install. Run
-`--check` afterward to confirm the restored install works.
+replacement virtualenv bootstrap, venv, Borg binary, and Borg wrapper are
+installed, proving that automatic rollback restores all previous components. It
+refuses to run without an existing install to roll back to. Run `--check`
+afterward to confirm the restored install works.
 
 ## Locking
 
@@ -62,6 +69,7 @@ sanitized files:
 - `README.md`
 - `CHANGELOG.md`
 - `config.yaml.example`
+- `requirements.txt`
 - `setup-borgmatic.sh`
 - `.github/workflows/shellcheck.yml`
 
@@ -151,6 +159,38 @@ sudo zfs set org.torsion.borgmatic:backup=auto POOL/DATASET
 
 Do not replace an existing working `config.yaml` with the example.
 
+The example's `ssh_command` pins the server's host key in
+`/mnt/apps/borgmatic/ssh/known_hosts` rather than `/root/.ssh`. Populate it
+before the first backup, checking the fingerprint against the one your
+provider publishes:
+
+```
+sudo ssh-keyscan -t ed25519 RSYNC_HOST > /tmp/known_hosts.new
+ssh-keygen -lf /tmp/known_hosts.new
+sudo install -m 600 /tmp/known_hosts.new /mnt/apps/borgmatic/ssh/known_hosts
+```
+
+An existing installation that already trusts the host from `/root` can copy
+that entry instead, then add the three `-o` options to its live `ssh_command`:
+
+```
+sudo sh -c 'umask 077; ssh-keygen -F RSYNC_HOST -f /root/.ssh/known_hosts | grep -v "^#" > /mnt/apps/borgmatic/ssh/known_hosts'
+```
+
+The installer and `--check` fail if `config.yaml` names a `UserKnownHostsFile`
+that is missing or empty.
+
+### Passwordless sudo is effectively root
+
+Step 5 of the script header grants `truenas_admin` passwordless sudo for
+`venv/bin/borgmatic *` and `bin/borg-wrapper.sh *`. Be aware that this is
+equivalent to passwordless root for anything running as `truenas_admin`:
+`borgmatic -c <any file>` runs that file's command hooks as root, and
+`borg --rsh '<command>'` runs an arbitrary command as root. A sudoers wildcard
+cannot narrow this. If that is not acceptable, skip the grant and enter the
+sudo password when using the aliases; the cron job runs as root and does not
+need it.
+
 Set the TrueNAS Cron Job command (System Settings -> Advanced -> Cron Jobs)
 to the flock-wrapped form so it shares the installer's lock:
 
@@ -186,14 +226,16 @@ recovery source.
 
 Do not update while a backup is running -- the installer now enforces this
 itself via the shared lock file, but check anyway before you start. Fetch and
-inspect changes first:
+review the incoming changes *before* applying them (an update may contain more
+than one commit, so compare against the fetched branch rather than `HEAD~1`):
 
 ```
 cd /mnt/apps/borgmatic
 git status
-git pull --ff-only
-git log -1 --oneline
-git diff HEAD~1 -- setup-borgmatic.sh
+git fetch origin
+git log --oneline HEAD..origin/main
+git diff HEAD origin/main -- setup-borgmatic.sh
+git merge --ff-only origin/main
 ```
 
 Then run the updated installer manually:
@@ -212,8 +254,8 @@ For repeatable deployments, tag commits after they have passed a real backup
 and restore test:
 
 ```
-git tag -a v1.1.1 -m "Tested TrueNAS borgmatic installer rollback and read-only checks"
-git push origin v1.1.1
+git tag -a vX.Y.Z -m "Tested TrueNAS borgmatic installer rollback and read-only checks"
+git push origin vX.Y.Z
 ```
 
 Deploy a specific tag on TrueNAS with:
@@ -221,7 +263,7 @@ Deploy a specific tag on TrueNAS with:
 ```
 cd /mnt/apps/borgmatic
 git fetch --tags
-git checkout --detach v1.1.1
+git checkout --detach vX.Y.Z
 sudo sh ./setup-borgmatic.sh
 ```
 
@@ -248,13 +290,19 @@ update, or just periodically -- without re-running the full installer.
 
 ## Rollback
 
-When replacing an existing installation, the script retains one prior venv and
-Borg binary:
+When replacing an existing installation, the script retains one prior
+generation of every installed component:
 
 ```
 /mnt/apps/borgmatic/venv-previous
 /mnt/apps/borgmatic/bin/borg.previous
+/mnt/apps/borgmatic/bin/borg-wrapper.sh.previous
+/mnt/apps/borgmatic/virtualenv.pyz.previous
 ```
+
+Both downloads are fetched and checksum-verified before any installed file is
+moved aside, so a network or checksum failure leaves the current installation
+untouched.
 
 The venv is built directly at its final path because Python console scripts
 embed absolute interpreter paths and are not safely relocatable. The installer
@@ -269,8 +317,8 @@ sudo sh setup-borgmatic.sh --check
 ```
 
 For a manual rollback after a later operational problem, first make sure no
-backup is running, then move the current generation aside and restore both
-previous items. Do not restore only one half of the pair.
+backup is running, then move the current generation aside and restore all
+of the previous items together. Do not restore only some of them.
 
 ## Updating pinned versions
 
@@ -279,6 +327,20 @@ Pinned versions should be updated deliberately rather than automatically:
 - review borgmatic and Borg releases once or twice per year;
 - keep the local and rsync.net Borg major/minor families compatible;
 - update the version, immutable download URL, and checksum together;
+- when bumping `BORGMATIC_VERSION`, or when a TrueNAS update changes the
+  system Python minor version, regenerate `requirements.txt` with
+  [pip-tools](https://pip-tools.readthedocs.io/) on that same Python version
+  (the installer refuses to run if its borgmatic pin disagrees with the
+  script). This keeps the hand-written header and replaces everything below
+  it:
+
+  ```
+  ( sed '/^$/q' requirements.txt
+    echo 'borgmatic==X.Y.Z' | pip-compile --quiet --generate-hashes \
+        --allow-unsafe --strip-extras --no-emit-index-url --no-header \
+        --output-file - - ) > requirements.txt.new
+  mv requirements.txt.new requirements.txt
+  ```
 - change one component at a time;
 - commit, deploy, run a real backup, test a restore, and run
   `--simulate-failure` before tagging.

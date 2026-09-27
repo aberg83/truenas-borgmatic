@@ -2,6 +2,46 @@
 
 All notable changes to this repository are documented here.
 
+## 1.2.0 - 2026-09-27
+
+- Install borgmatic and its full dependency tree from a new hash-locked
+  `requirements.txt` (`--require-hashes --only-binary :all:`) instead of an
+  unpinned `pip install borgmatic==X`. The installer refuses to run if the
+  file's borgmatic pin disagrees with `BORGMATIC_VERSION`.
+- Keep virtualenv's seed-wheel cache in the private tmp directory (removed
+  after the build), disable virtualenv's periodic seed update, and run pip
+  with `--isolated --no-cache-dir`, so nothing is written under `/root`.
+- Close the interrupt window between flagging a component as replaced and
+  moving its original aside: rollback now records whether each component
+  existed and restores idempotently from whatever point was reached. A
+  second Ctrl-C can no longer abort a rollback halfway through.
+- Added `--help`; combining `--check` and `--simulate-failure` is now an
+  error instead of silently using the last one.
+- `config.yaml.example` pins SSH host keys in `ssh/known_hosts` on the
+  dataset with `BatchMode` and `StrictHostKeyChecking`; verification fails
+  if a configured `UserKnownHostsFile` is missing or empty.
+- Documented that the passwordless sudo grants are equivalent to
+  passwordless root.
+- CI installs `requirements.txt` on Python 3.11 exactly as the installer
+  does and checks its borgmatic pin matches the script.
+
+## 1.1.3 - 2026-09-27
+
+- Fetch and verify both downloads (virtualenv bootstrap and Borg binary)
+  before moving any installed component aside. Previously a Borg download or
+  checksum failure left the new `virtualenv.pyz` swapped in without rollback.
+- Remove partial `.new` downloads on any failed exit.
+- `--simulate-failure` now refuses to run without an existing install to
+  restore, instead of installing and then rolling back to nothing.
+- `--check` warns when the installed borgmatic version or Borg binary
+  differs from the versions pinned in the script.
+- Passphrase-file instructions no longer put the passphrase in shell history
+  or a process listing, or leave the file briefly world-readable.
+- CI validates `config.yaml.example` against the pinned borgmatic schema.
+- README: updated rollback and `--simulate-failure` descriptions for all four
+  components; review updates against `origin/main` before merging rather
+  than `HEAD~1` after pulling; generic tag examples.
+
 ## 1.1.2 - 2026-09-19
 
 - Extended automatic rollback to include the downloaded `virtualenv.pyz`

@@ -6,6 +6,7 @@
 !README.md
 !CHANGELOG.md
 !config.yaml.example
+!requirements.txt
 !setup-borgmatic.sh
 
 # Continuous integration
