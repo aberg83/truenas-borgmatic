@@ -16,7 +16,11 @@ remote_path: borg14
 temporary_directory: /mnt/apps/borgmatic/tmp
 user_runtime_directory: /mnt/apps/borgmatic/tmp
 borg_base_directory: /mnt/apps/borgmatic
-ssh_command: ssh -i /mnt/apps/borgmatic/ssh/id_ed25519
+# Host keys are pinned on the dataset rather than in /root, and BatchMode plus
+# StrictHostKeyChecking make an unknown or changed host key fail the run
+# immediately instead of hanging on a prompt. Populate ssh/known_hosts first --
+# see step 3 of AFTER RUNNING in setup-borgmatic.sh.
+ssh_command: ssh -i /mnt/apps/borgmatic/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/mnt/apps/borgmatic/ssh/known_hosts
 encryption_passcommand: cat /mnt/apps/borgmatic/passphrase
 
 # Enable consistent snapshots of tagged ZFS datasets.

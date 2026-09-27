@@ -25,13 +25,23 @@ jobs:
         run: >-
           ruby -e 'require "yaml"; YAML.safe_load_file("config.yaml.example", aliases: true)'
 
-      # Schema-check the example against the exact borgmatic version the
-      # installer pins, so an option rename or removal is caught here rather
-      # than at the first nightly run after an upgrade.
-      - name: Validate example against pinned borgmatic schema
+      # Same Python minor version as TrueNAS SCALE, which requirements.txt
+      # is resolved for.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Install requirements.txt exactly as the installer does, confirm it
+      # pins the same borgmatic as the script, then schema-check the example
+      # so an option rename or removal is caught here rather than at the
+      # first nightly run after an upgrade.
+      - name: Install hash-locked requirements and validate example config
         run: |
           version="$(sed -n 's/^BORGMATIC_VERSION="\(.*\)"$/\1/p' setup-borgmatic.sh)"
           test -n "$version"
-          python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet "borgmatic==$version"
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --require-hashes \
+              --only-binary :all: -r requirements.txt
+          test "$("$RUNNER_TEMP/venv/bin/borgmatic" --version)" = "$version"
           "$RUNNER_TEMP/venv/bin/borgmatic" config validate --config config.yaml.example

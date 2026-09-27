@@ -2,6 +2,29 @@
 
 All notable changes to this repository are documented here.
 
+## 1.2.0 - 2026-09-27
+
+- Install borgmatic and its full dependency tree from a new hash-locked
+  `requirements.txt` (`--require-hashes --only-binary :all:`) instead of an
+  unpinned `pip install borgmatic==X`. The installer refuses to run if the
+  file's borgmatic pin disagrees with `BORGMATIC_VERSION`.
+- Keep virtualenv's seed-wheel cache in the private tmp directory (removed
+  after the build), disable virtualenv's periodic seed update, and run pip
+  with `--isolated --no-cache-dir`, so nothing is written under `/root`.
+- Close the interrupt window between flagging a component as replaced and
+  moving its original aside: rollback now records whether each component
+  existed and restores idempotently from whatever point was reached. A
+  second Ctrl-C can no longer abort a rollback halfway through.
+- Added `--help`; combining `--check` and `--simulate-failure` is now an
+  error instead of silently using the last one.
+- `config.yaml.example` pins SSH host keys in `ssh/known_hosts` on the
+  dataset with `BatchMode` and `StrictHostKeyChecking`; verification fails
+  if a configured `UserKnownHostsFile` is missing or empty.
+- Documented that the passwordless sudo grants are equivalent to
+  passwordless root.
+- CI installs `requirements.txt` on Python 3.11 exactly as the installer
+  does and checks its borgmatic pin matches the script.
+
 ## 1.1.3 - 2026-09-27
 
 - Fetch and verify both downloads (virtualenv bootstrap and Borg binary)

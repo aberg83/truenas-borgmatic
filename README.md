@@ -14,7 +14,10 @@ The installer works around three TrueNAS constraints:
 
 The script uses a pinned virtualenv zipapp, a pinned official Borg standalone
 binary, and an exec-enabled private temporary directory on the persistent ZFS
-dataset. Downloads are checksum-verified before installation.
+dataset. Downloads are checksum-verified before installation, and borgmatic plus
+its entire Python dependency tree is installed from the hash-locked
+`requirements.txt` (wheels only, `--require-hashes`). virtualenv and pip caches
+are kept off `/root`.
 
 ## Modes
 
@@ -23,6 +26,7 @@ sudo sh setup-borgmatic.sh                  # install or upgrade
 sudo sh setup-borgmatic.sh --check          # verify an existing install only
 sudo sh setup-borgmatic.sh --simulate-failure  # prove the rollback path works
 sudo sh setup-borgmatic.sh --version        # print the script's version
+sh setup-borgmatic.sh --help                # print usage
 ```
 
 `--check` makes no persistent installation changes: it creates no install
@@ -65,6 +69,7 @@ sanitized files:
 - `README.md`
 - `CHANGELOG.md`
 - `config.yaml.example`
+- `requirements.txt`
 - `setup-borgmatic.sh`
 - `.github/workflows/shellcheck.yml`
 
@@ -153,6 +158,38 @@ sudo zfs set org.torsion.borgmatic:backup=auto POOL/DATASET
 ```
 
 Do not replace an existing working `config.yaml` with the example.
+
+The example's `ssh_command` pins the server's host key in
+`/mnt/apps/borgmatic/ssh/known_hosts` rather than `/root/.ssh`. Populate it
+before the first backup, checking the fingerprint against the one your
+provider publishes:
+
+```
+sudo ssh-keyscan -t ed25519 RSYNC_HOST > /tmp/known_hosts.new
+ssh-keygen -lf /tmp/known_hosts.new
+sudo install -m 600 /tmp/known_hosts.new /mnt/apps/borgmatic/ssh/known_hosts
+```
+
+An existing installation that already trusts the host from `/root` can copy
+that entry instead, then add the three `-o` options to its live `ssh_command`:
+
+```
+sudo sh -c 'umask 077; ssh-keygen -F RSYNC_HOST -f /root/.ssh/known_hosts | grep -v "^#" > /mnt/apps/borgmatic/ssh/known_hosts'
+```
+
+The installer and `--check` fail if `config.yaml` names a `UserKnownHostsFile`
+that is missing or empty.
+
+### Passwordless sudo is effectively root
+
+Step 5 of the script header grants `truenas_admin` passwordless sudo for
+`venv/bin/borgmatic *` and `bin/borg-wrapper.sh *`. Be aware that this is
+equivalent to passwordless root for anything running as `truenas_admin`:
+`borgmatic -c <any file>` runs that file's command hooks as root, and
+`borg --rsh '<command>'` runs an arbitrary command as root. A sudoers wildcard
+cannot narrow this. If that is not acceptable, skip the grant and enter the
+sudo password when using the aliases; the cron job runs as root and does not
+need it.
 
 Set the TrueNAS Cron Job command (System Settings -> Advanced -> Cron Jobs)
 to the flock-wrapped form so it shares the installer's lock:
@@ -290,6 +327,20 @@ Pinned versions should be updated deliberately rather than automatically:
 - review borgmatic and Borg releases once or twice per year;
 - keep the local and rsync.net Borg major/minor families compatible;
 - update the version, immutable download URL, and checksum together;
+- when bumping `BORGMATIC_VERSION`, or when a TrueNAS update changes the
+  system Python minor version, regenerate `requirements.txt` with
+  [pip-tools](https://pip-tools.readthedocs.io/) on that same Python version
+  (the installer refuses to run if its borgmatic pin disagrees with the
+  script). This keeps the hand-written header and replaces everything below
+  it:
+
+  ```
+  ( sed '/^$/q' requirements.txt
+    echo 'borgmatic==X.Y.Z' | pip-compile --quiet --generate-hashes \
+        --allow-unsafe --strip-extras --no-emit-index-url --no-header \
+        --output-file - - ) > requirements.txt.new
+  mv requirements.txt.new requirements.txt
+  ```
 - change one component at a time;
 - commit, deploy, run a real backup, test a restore, and run
   `--simulate-failure` before tagging.

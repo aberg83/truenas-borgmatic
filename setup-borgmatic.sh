@@ -56,6 +56,11 @@
 #                                                 your previous install back
 #                                                 in place, confirmed working.
 #   sudo sh setup-borgmatic.sh --version         Print this script's version.
+#   sh setup-borgmatic.sh --help                 Print usage.
+#
+# requirements.txt (next to this script) hash-locks borgmatic and every one of
+# its Python dependencies; the installer refuses to run if its borgmatic pin
+# disagrees with BORGMATIC_VERSION below.
 #
 # WHEN TO RUN A REAL INSTALL/UPGRADE
 # ------------------------------------
@@ -119,7 +124,14 @@
 #        user_runtime_directory: $BASE_DIR/tmp
 #        borg_base_directory: $BASE_DIR      # covers cache/config/security
 #                                             # dirs -- keeps them off /root
-#        ssh_command: ssh -i $BASE_DIR/ssh/id_ed25519
+#        ssh_command: ssh -i $BASE_DIR/ssh/id_ed25519 -o BatchMode=yes
+#            -o StrictHostKeyChecking=yes
+#            -o UserKnownHostsFile=$BASE_DIR/ssh/known_hosts
+#                                             # (one line) -- host keys live
+#                                             # on the dataset, not in /root,
+#                                             # and an unknown or changed key
+#                                             # fails fast instead of hanging
+#                                             # the cron job on a prompt
 #        encryption_passcommand: cat $BASE_DIR/passphrase   # NOT a plaintext
 #                                             # encryption_passphrase: line --
 #                                             # config.yaml gets backed up
@@ -149,6 +161,18 @@
 #      A bare "borg serve" (unversioned) will fail on providers that pin
 #      multiple Borg versions -- match remote_path exactly.
 #
+#      Pin the server's host key on the dataset (matches the ssh_command
+#      above). Fetch it, compare the fingerprint against the one your provider
+#      publishes, and only then install it:
+#        sudo ssh-keyscan -t ed25519 yourhost.rsync.net > /tmp/known_hosts.new
+#        ssh-keygen -lf /tmp/known_hosts.new
+#        sudo install -m 600 /tmp/known_hosts.new BASE_DIR/ssh/known_hosts
+#      If root has already connected and trusted this host, copy that entry
+#      instead:
+#        sudo sh -c 'umask 077; ssh-keygen -F yourhost.rsync.net -f /root/.ssh/known_hosts | grep -v "^#" > BASE_DIR/ssh/known_hosts'
+#      The installer's verification (and --check) fails if config.yaml names a
+#      UserKnownHostsFile that is missing or empty.
+#
 #   4. TrueNAS Cron Job (System Settings -> Advanced -> Cron Jobs):
 #        User: root
 #        Command: flock -n $LOCK_FILE $BASE_DIR/venv/bin/borgmatic -c $BASE_DIR/config.yaml
@@ -168,6 +192,13 @@
 #      overrides it):
 #        $BASE_DIR/venv/bin/borgmatic *
 #        $BASE_DIR/bin/borg-wrapper.sh *
+#      SECURITY: these two grants are equivalent to passwordless root for
+#      anything running as truenas_admin. `borgmatic -c <any file>` runs that
+#      file's command hooks as root, and `borg --rsh '<command>'` runs an
+#      arbitrary command as root. The `*` cannot be narrowed to prevent this.
+#      Only add them if that is acceptable for this account; otherwise skip
+#      this step and type the sudo password when using the aliases (the
+#      cron job runs as root and doesn't need either grant).
 #
 #   6. Source $BASE_DIR/aliases.sh from your shell's rc file (this script
 #      creates aliases.sh but can't safely edit your rc file for you):
@@ -209,7 +240,7 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.1.3"
+SCRIPT_VERSION="1.2.0"
 BASE_DIR="/mnt/apps/borgmatic"
 BORGMATIC_VERSION="2.1.7"
 BORG_VERSION="1.4.5"
@@ -222,22 +253,44 @@ VIRTUALENV_SHA256="2dfdb6785b762b8a7a7a31d413c16516aa785552d05f61435b072fde1cb34
 LOCK_FILE="$BASE_DIR/borgmatic.lock"
 # -----------------------------------------------------------------------------
 
+usage() {
+    echo "Usage: sudo sh $0 [--check | --simulate-failure | --version | --help]"
+    echo ""
+    echo "  (no option)         Install or upgrade."
+    echo "  --check             Verify an existing install; changes nothing."
+    echo "  --simulate-failure  Real install that deliberately fails, to prove rollback."
+    echo "  --version           Print this script's version."
+    echo "  --help              Print this help."
+}
+
 ACTION="install"
+set_action() {
+    if [ "$ACTION" != "install" ] && [ "$ACTION" != "$1" ]; then
+        echo "ERROR: --$ACTION and --$1 cannot be combined." >&2
+        usage >&2
+        exit 1
+    fi
+    ACTION="$1"
+}
 for arg in "$@"; do
     case "$arg" in
         --version)
             echo "setup-borgmatic.sh $SCRIPT_VERSION"
             exit 0
             ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
         --check)
-            ACTION="check"
+            set_action check
             ;;
         --simulate-failure)
-            ACTION="simulate-failure"
+            set_action simulate-failure
             ;;
         *)
             echo "ERROR: Unknown argument: $arg" >&2
-            echo "Usage: $0 [--check|--simulate-failure|--version]" >&2
+            usage >&2
             exit 1
             ;;
     esac
@@ -317,6 +370,19 @@ run_verification() {
             echo "    Configuration validation failed." >&2
             return 1
         fi
+
+        known_hosts_file="$(sed -n 's/.*UserKnownHostsFile=\([^ "'"'"']*\).*/\1/p' \
+            "$BASE_DIR/config.yaml" | head -n 1)"
+        if [ -n "$known_hosts_file" ]; then
+            echo "==> Verifying SSH known_hosts file"
+            if [ -s "$known_hosts_file" ]; then
+                echo "    $known_hosts_file OK."
+            else
+                echo "    config.yaml uses UserKnownHostsFile=$known_hosts_file, but it is missing or empty." >&2
+                echo "    See step 3 of AFTER RUNNING in this script's header." >&2
+                return 1
+            fi
+        fi
     else
         echo "NOTE: $BASE_DIR/config.yaml not found -- skipping config validation."
     fi
@@ -365,6 +431,19 @@ if [ "$ACTION" = "simulate-failure" ]; then
     fi
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REQUIREMENTS_FILE="$SCRIPT_DIR/requirements.txt"
+if [ ! -f "$REQUIREMENTS_FILE" ]; then
+    echo "ERROR: $REQUIREMENTS_FILE not found; it must sit next to this script." >&2
+    exit 1
+fi
+if ! awk -v pin="borgmatic==$BORGMATIC_VERSION" '$1 == pin { found = 1 } END { exit !found }' \
+    "$REQUIREMENTS_FILE"; then
+    echo "ERROR: $REQUIREMENTS_FILE does not pin borgmatic==$BORGMATIC_VERSION." >&2
+    echo "Regenerate it -- see \"Updating pinned versions\" in README.md." >&2
+    exit 1
+fi
+
 for required_command in curl python3 sha256sum awk grep flock; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "ERROR: Required command not found: $required_command" >&2
@@ -386,6 +465,23 @@ fi
 mkdir -p "$BASE_DIR/bin" "$BASE_DIR/tmp" "$BASE_DIR/ssh"
 chmod 700 "$BASE_DIR/ssh" "$BASE_DIR/tmp"
 
+# Put one component back the way it was before this run, whichever point the
+# replacement reached. Each *_REPLACED flag is set before its component's
+# original is moved aside, so an interrupt can land between the flag and the
+# move: the original is then still in place with no .previous, and the
+# *_EXISTED flag (recorded first) tells that apart from a first install.
+restore_component() {
+    current="$1"
+    previous="$2"
+    existed="$3"
+    if [ -e "$previous" ]; then
+        rm -rf "$current"
+        mv "$previous" "$current"
+    elif [ "$existed" -eq 0 ]; then
+        rm -rf "$current"
+    fi
+}
+
 rollback_install() {
     if [ "$ACTION" = "simulate-failure" ]; then
         echo "==> Intentional simulated failure; restoring previous installation." >&2
@@ -393,28 +489,18 @@ rollback_install() {
         echo "ERROR: Installation failed; restoring previous installation." >&2
     fi
     if [ "$VENV_REPLACED" -eq 1 ]; then
-        rm -rf "$BASE_DIR/venv"
-        if [ -d "$BASE_DIR/venv-previous" ]; then
-            mv "$BASE_DIR/venv-previous" "$BASE_DIR/venv"
-        fi
+        restore_component "$BASE_DIR/venv" "$BASE_DIR/venv-previous" "$VENV_EXISTED"
     fi
     if [ "$BORG_REPLACED" -eq 1 ]; then
-        rm -f "$BASE_DIR/bin/borg"
-        if [ -f "$BASE_DIR/bin/borg.previous" ]; then
-            mv "$BASE_DIR/bin/borg.previous" "$BASE_DIR/bin/borg"
-        fi
+        restore_component "$BASE_DIR/bin/borg" "$BASE_DIR/bin/borg.previous" "$BORG_EXISTED"
     fi
     if [ "$WRAPPER_REPLACED" -eq 1 ]; then
-        rm -f "$BASE_DIR/bin/borg-wrapper.sh"
-        if [ -f "$BASE_DIR/bin/borg-wrapper.sh.previous" ]; then
-            mv "$BASE_DIR/bin/borg-wrapper.sh.previous" "$BASE_DIR/bin/borg-wrapper.sh"
-        fi
+        restore_component "$BASE_DIR/bin/borg-wrapper.sh" \
+            "$BASE_DIR/bin/borg-wrapper.sh.previous" "$WRAPPER_EXISTED"
     fi
     if [ "$VIRTUALENV_REPLACED" -eq 1 ]; then
-        rm -f "$BASE_DIR/virtualenv.pyz"
-        if [ -f "$BASE_DIR/virtualenv.pyz.previous" ]; then
-            mv "$BASE_DIR/virtualenv.pyz.previous" "$BASE_DIR/virtualenv.pyz"
-        fi
+        restore_component "$BASE_DIR/virtualenv.pyz" \
+            "$BASE_DIR/virtualenv.pyz.previous" "$VIRTUALENV_EXISTED"
     fi
     ROLLBACK_ACTIVE=0
     echo "==> Rollback complete. Run '$0 --check' to confirm the restored install works."
@@ -422,19 +508,34 @@ rollback_install() {
 
 handle_exit() {
     exit_status="$?"
-    trap - EXIT HUP INT TERM
+    trap - EXIT
+    # A second Ctrl-C must not abort a rollback halfway through.
+    trap '' HUP INT TERM
     if [ "$ROLLBACK_ACTIVE" -eq 1 ]; then
         rollback_install
     fi
     rm -f "$BASE_DIR/virtualenv.pyz.new" "$BASE_DIR/bin/borg.new"
+    rm -rf "$VIRTUALENV_OVERRIDE_APP_DATA"
     exit "$exit_status"
 }
+
+# virtualenv's seed-wheel cache would otherwise land in /root/.cache on the OS
+# image (even `--version` creates it, so --app-data alone isn't enough). Point
+# it at the private tmp directory and remove it once the venv is built. pip's
+# own cache is disabled with --no-cache-dir below.
+VIRTUALENV_OVERRIDE_APP_DATA="$BASE_DIR/tmp/virtualenv-app-data"
+export VIRTUALENV_OVERRIDE_APP_DATA
+rm -rf "$VIRTUALENV_OVERRIDE_APP_DATA"
 
 ROLLBACK_ACTIVE=0
 VENV_REPLACED=0
 BORG_REPLACED=0
 WRAPPER_REPLACED=0
 VIRTUALENV_REPLACED=0
+VENV_EXISTED=0
+BORG_EXISTED=0
+WRAPPER_EXISTED=0
+VIRTUALENV_EXISTED=0
 trap handle_exit EXIT
 trap 'exit 1' HUP INT TERM
 
@@ -474,30 +575,41 @@ echo "==> Installing verified replacements"
 ROLLBACK_ACTIVE=1
 rm -f "$BASE_DIR/virtualenv.pyz.previous"
 if [ -f "$BASE_DIR/virtualenv.pyz" ]; then
-    mv "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/virtualenv.pyz.previous"
+    VIRTUALENV_EXISTED=1
 fi
 VIRTUALENV_REPLACED=1
+if [ "$VIRTUALENV_EXISTED" -eq 1 ]; then
+    mv "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/virtualenv.pyz.previous"
+fi
 mv "$BASE_DIR/virtualenv.pyz.new" "$BASE_DIR/virtualenv.pyz"
 
 rm -rf "$BASE_DIR/venv-new"
 rm -rf "$BASE_DIR/venv-previous"
 if [ -d "$BASE_DIR/venv" ]; then
-    mv "$BASE_DIR/venv" "$BASE_DIR/venv-previous"
+    VENV_EXISTED=1
 fi
 VENV_REPLACED=1
+if [ "$VENV_EXISTED" -eq 1 ]; then
+    mv "$BASE_DIR/venv" "$BASE_DIR/venv-previous"
+fi
 
 echo "==> Building replacement venv at $BASE_DIR/venv"
-python3 "$BASE_DIR/virtualenv.pyz" "$BASE_DIR/venv"
+python3 "$BASE_DIR/virtualenv.pyz" --no-periodic-update "$BASE_DIR/venv"
+rm -rf "$VIRTUALENV_OVERRIDE_APP_DATA"
 
-echo "==> Installing borgmatic into the venv (pure Python -- no compiler needed)"
-"$BASE_DIR/venv/bin/pip" install "borgmatic==$BORGMATIC_VERSION"
+echo "==> Installing hash-locked borgmatic $BORGMATIC_VERSION into the venv (wheels only)"
+"$BASE_DIR/venv/bin/pip" --isolated --no-cache-dir --disable-pip-version-check \
+    install --require-hashes --only-binary :all: -r "$REQUIREMENTS_FILE"
 "$BASE_DIR/venv/bin/borgmatic" --version
 
 rm -f "$BASE_DIR/bin/borg.previous"
 if [ -f "$BASE_DIR/bin/borg" ]; then
-    mv "$BASE_DIR/bin/borg" "$BASE_DIR/bin/borg.previous"
+    BORG_EXISTED=1
 fi
 BORG_REPLACED=1
+if [ "$BORG_EXISTED" -eq 1 ]; then
+    mv "$BASE_DIR/bin/borg" "$BASE_DIR/bin/borg.previous"
+fi
 mv "$BASE_DIR/bin/borg.new" "$BASE_DIR/bin/borg"
 
 # ---- 5. Wrapper script for `borg` invocations ------------------------------
@@ -516,9 +628,12 @@ mv "$BASE_DIR/bin/borg.new" "$BASE_DIR/bin/borg"
 echo "==> Writing borg-wrapper.sh"
 rm -f "$BASE_DIR/bin/borg-wrapper.sh.previous"
 if [ -f "$BASE_DIR/bin/borg-wrapper.sh" ]; then
-    mv "$BASE_DIR/bin/borg-wrapper.sh" "$BASE_DIR/bin/borg-wrapper.sh.previous"
+    WRAPPER_EXISTED=1
 fi
 WRAPPER_REPLACED=1
+if [ "$WRAPPER_EXISTED" -eq 1 ]; then
+    mv "$BASE_DIR/bin/borg-wrapper.sh" "$BASE_DIR/bin/borg-wrapper.sh.previous"
+fi
 cat > "$BASE_DIR/bin/borg-wrapper.sh" <<WRAPPER_EOF
 #!/bin/sh
 export TMPDIR=$BASE_DIR/tmp
