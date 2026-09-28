@@ -12,6 +12,9 @@
 # new series needs a matching remote_path on rsync.net; a newer stable series
 # is reported separately as informational.
 #
+# borgmatic versions listed in BORGMATIC_SKIP_VERSIONS are known-bad: they are
+# reported as skipped and never count as an update.
+#
 # Needs curl, jq and git. Borg releases are read from the repository's tags
 # (stable releases are plain X.Y.Z; betas and release candidates carry a
 # suffix), so no GitHub API token is needed.
@@ -43,6 +46,7 @@ pypi_latest() {
 }
 
 borgmatic_pinned="$(pin BORGMATIC_VERSION)"
+borgmatic_skip="$(sed -n 's/^BORGMATIC_SKIP_VERSIONS="\(.*\)"$/\1/p' "$script")"
 borg_pinned="$(pin BORG_VERSION)"
 virtualenv_pinned="$(pin VIRTUALENV_VERSION)"
 
@@ -69,7 +73,10 @@ row() {
     latest="$3"
     link="$4"
     informational="${5:-}"
-    if is_newer "$pinned" "$latest" && [ -n "$informational" ]; then
+    skipped="${6:-}"
+    if is_newer "$pinned" "$latest" && [ -n "$skipped" ]; then
+        status="skipped (known-bad, see BORGMATIC_SKIP_VERSIONS)"
+    elif is_newer "$pinned" "$latest" && [ -n "$informational" ]; then
         status="newer available (optional)"
     elif is_newer "$pinned" "$latest"; then
         status="**update available**"
@@ -82,8 +89,14 @@ row() {
 
 echo "| Component | Pinned | Latest | Status |"
 echo "|---|---|---|---|"
+borgmatic_skipped=""
+for version in $borgmatic_skip; do
+    if [ "$version" = "$borgmatic_latest" ]; then
+        borgmatic_skipped=1
+    fi
+done
 row borgmatic "$borgmatic_pinned" "$borgmatic_latest" \
-    "https://github.com/borgmatic-collective/borgmatic/releases"
+    "https://github.com/borgmatic-collective/borgmatic/releases" "" "$borgmatic_skipped"
 row "Borg ($borg_series.x)" "$borg_pinned" "$borg_latest" \
     "https://github.com/borgbackup/borg/releases/tag/$borg_latest"
 row virtualenv "$virtualenv_pinned" "$virtualenv_latest" \
