@@ -240,9 +240,15 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.3.1"
 BASE_DIR="/mnt/apps/borgmatic"
-BORGMATIC_VERSION="2.1.9"
+BORGMATIC_VERSION="2.1.7"
+# Known-bad borgmatic releases the monthly version check won't suggest.
+# 2.1.8+ put the runtime directory (and so the ZFS snapshot mount paths) under
+# a new random name every run. Borg keys its files cache on the full path, so
+# every file looks new and each backup re-reads all data (3 min -> 3 h).
+# Remove a version from this list only once upstream fixes the regression.
+BORGMATIC_SKIP_VERSIONS="2.1.8 2.1.9"
 BORG_VERSION="1.4.5"
 BORG_ASSET="borg-linux-glibc231-x86_64"
 BORG_SHA256="c8457f70660064d0f45b38283ab4cc65b342970012013201d3aec713a75898fb"
@@ -444,6 +450,14 @@ if [ "$ACTION" = "simulate-failure" ]; then
         exit 1
     fi
 fi
+
+for skipped_version in $BORGMATIC_SKIP_VERSIONS; do
+    if [ "$skipped_version" = "$BORGMATIC_VERSION" ]; then
+        echo "ERROR: borgmatic $BORGMATIC_VERSION is listed in BORGMATIC_SKIP_VERSIONS as known-bad." >&2
+        echo "See the comment above that setting before installing it. Nothing has been changed." >&2
+        exit 1
+    fi
+done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REQUIREMENTS_FILE="$SCRIPT_DIR/requirements.txt"

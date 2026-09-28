@@ -2,6 +2,18 @@
 
 All notable changes to this repository are documented here.
 
+## 1.3.1 - 2026-09-28
+
+- Reverted borgmatic 2.1.9 -> 2.1.7, restoring the exact `requirements.txt`
+  dependency set from 1.2.0. borgmatic 2.1.8 started creating its runtime
+  directory under a new random name every run. The ZFS hook mounts snapshots
+  inside it, and Borg keys its files cache on the full path, so every file
+  was treated as new and re-read on each backup (a 3-minute nightly run took
+  3 hours). Upstream has no fix as of 2.1.10.dev0.
+- Added `BORGMATIC_SKIP_VERSIONS` (currently 2.1.8 and 2.1.9). The monthly
+  version check reports those releases as skipped instead of opening an
+  update issue for them, and the installer refuses to install one.
+
 ## 1.3.0 - 2026-09-27
 
 - The installer refuses to run, before changing anything, when the system

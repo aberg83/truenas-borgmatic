@@ -330,7 +330,16 @@ runs on the 1st of each month (or on demand from the Actions tab). It opens a
 single "Pinned versions: updates available" issue when borgmatic or Borg (within
 the pinned series, e.g. 1.4.x) has a newer release, refreshes it on later runs,
 and closes it once everything is current. It never changes a pin itself. A newer
-virtualenv is listed for information only.
+virtualenv is listed for information only, and borgmatic releases listed in
+`BORGMATIC_SKIP_VERSIONS` in the script are reported as skipped.
+
+borgmatic is currently held at 2.1.7. From 2.1.8 onward, borgmatic creates its
+runtime directory under a new random name on every run, and the ZFS hook mounts
+snapshots inside it. Borg keys its files cache on the full path, so every file
+looks new and each backup re-reads all data. On this system that took a nightly
+run from about 3 minutes to 3 hours. Before bumping past 2.1.7, check that a
+second consecutive `borgmatic create --stats` run is fast again, not just the
+first.
 
 
 - review borgmatic and Borg releases once or twice per year;
