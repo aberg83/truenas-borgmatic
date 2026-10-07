@@ -1,5 +1,13 @@
 # borgmatic on TrueNAS SCALE
 
+> **Archived — no longer in use or maintained.** This setup was removed from
+> the TrueNAS system it was written for in October 2026. The last tested
+> release is [v1.3.1](https://github.com/aberg83/truenas-borgmatic/releases/tag/v1.3.1) (borgmatic 2.1.7, Borg 1.4.5,
+> Python 3.11). Pinned versions and checksums are not being updated, so review
+> them before reusing anything here. In particular, borgmatic 2.1.8 and later
+> make every backup re-read all data with this ZFS setup; see
+> [Updating pinned versions](#updating-pinned-versions).
+
 This repository installs a pinned borgmatic and Borg environment on a
 TrueNAS SCALE system without modifying the appliance-managed operating system.
 It is intended to live directly in `/mnt/apps/borgmatic` alongside the active
