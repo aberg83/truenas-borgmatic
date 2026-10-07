@@ -2,6 +2,11 @@
 
 All notable changes to this repository are documented here.
 
+## Archived - 2026-10-07
+
+- Setup removed from the TrueNAS system; repository archived. v1.3.1 is the
+  last tested release. No further updates.
+
 ## 1.3.1 - 2026-09-28
 
 - Reverted borgmatic 2.1.9 -> 2.1.7, restoring the exact `requirements.txt`
