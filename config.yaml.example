@@ -43,9 +43,13 @@ monitoring_verbosity: 1
 retries: 3
 retry_wait: 60
 
-# Optional -- periodic consistency verification, run less often than backups
-# since it reads more data. archives is capped via check_last so it doesn't
-# re-verify your entire retention window on every run.
+# Consistency checks. With no checks: section, borgmatic still runs the
+# repository and archives checks at most once a month, and the archives check
+# covers every archive. On a large repository over SSH that can make one
+# night's run take hours, and if it's still running at the next scheduled
+# start, that run is skipped by the lock and healthchecks reports the missed
+# ping. To spread the cost, set the frequencies explicitly and cap the
+# archives check with check_last:
 # checks:
 #     - name: repository
 #       frequency: 4 weeks

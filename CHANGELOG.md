@@ -13,6 +13,9 @@ All notable changes to this repository are documented here.
   release is tested with two consecutive fast `create --stats` runs.
 - `config.yaml.example` enables `retries: 3` and `retry_wait: 60`, so a brief
   network or host outage is retried instead of failing the run.
+- `config.yaml.example` explains borgmatic's default monthly repository and
+  archives checks, what a full archives check costs on a large remote
+  repository, and how `check_last` limits it.
 - Removed the `borg` alias from `aliases.sh`. It ran the Borg wrapper
   without the repository, passphrase or SSH settings, so repository
   commands failed; use `borgmatic borg ...` instead. Re-run the installer to
