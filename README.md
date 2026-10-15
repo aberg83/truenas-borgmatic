@@ -54,7 +54,7 @@ TrueNAS Cron Job command to be flock-wrapped -- see
 [First-time configuration](#first-time-configuration) below.
 
 `--check` does not take this lock, since it's read-only. The interactive
-`borgmatic`/`borg` shell aliases are deliberately **not** flock-wrapped: a
+`borgmatic` shell alias is deliberately **not** flock-wrapped: a
 `borgmatic mount` session left open would otherwise silently block every
 subsequent cron run for as long as it stayed mounted, which is a worse
 failure mode than the rare overlap this lock exists to catch. Manual,

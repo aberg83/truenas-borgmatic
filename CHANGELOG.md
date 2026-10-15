@@ -4,6 +4,11 @@ All notable changes to this repository are documented here.
 
 ## Unreleased
 
+- Removed the `borg` alias from `aliases.sh`. It ran the Borg wrapper
+  without the repository, passphrase or SSH settings, so repository
+  commands failed; use `borgmatic borg ...` instead. Re-run the installer to
+  regenerate `aliases.sh`. `bin/borg-wrapper.sh` stays, since borgmatic uses
+  it as `local_path`.
 - Fixed the optional Post Init self-heal command for the aliases line. Init
   scripts run as root, so `~/.zshrc` pointed at `/root/.zshrc`; it now names
   `/home/truenas_admin/.zshrc`.
