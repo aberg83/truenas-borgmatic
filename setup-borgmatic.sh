@@ -83,10 +83,9 @@
 # requires your TrueNAS Cron Job command to be flock-wrapped -- see step 4
 # below. --check does NOT take this lock (it makes no persistent install
 # changes and is safe to run concurrently with a real backup). The interactive
-# `borgmatic`/`borg`
-# aliases are deliberately NOT flock-wrapped: a `borgmatic mount` session
-# left open would otherwise silently block every subsequent cron run for as
-# long as it stayed mounted, which is a worse failure mode than the rare
+# `borgmatic` alias is deliberately NOT flock-wrapped: a `borgmatic mount`
+# session left open would otherwise silently block every subsequent cron run
+# for as long as it stayed mounted, which is a worse failure mode than the rare
 # overlap this lock is meant to catch. Manual, supervised use is lower risk
 # than an unattended cron collision.
 #
@@ -199,7 +198,9 @@
 #
 #   5. Source $BASE_DIR/aliases.sh from your shell's rc file (this script
 #      creates aliases.sh but can't safely edit your rc file for you). The
-#      aliases run through sudo and ask for your password as usual:
+#      `borgmatic` alias runs through sudo and asks for your password as
+#      usual. For raw Borg commands use `borgmatic borg ...`, which fills in
+#      the repository, passphrase and SSH settings from config.yaml:
 #        echo 'source BASE_DIR/aliases.sh' >> ~/.zshrc   # or ~/.bashrc
 #      Optionally add a TrueNAS Init/Shutdown Script (Post Init, type
 #      Command) to self-heal that line if a future update wipes ~/.zshrc.
@@ -691,7 +692,6 @@ fi
 echo "==> Writing aliases.sh"
 cat > "$BASE_DIR/aliases.sh" <<ALIASES_EOF
 alias borgmatic='sudo $BASE_DIR/venv/bin/borgmatic -c $BASE_DIR/config.yaml'
-alias borg='sudo $BASE_DIR/bin/borg-wrapper.sh'
 ALIASES_EOF
 chmod 644 "$BASE_DIR/aliases.sh"
 
