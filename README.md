@@ -272,17 +272,6 @@ sudo /mnt/apps/borgmatic/venv/bin/borgmatic -c /mnt/apps/borgmatic/config.yaml \
     key export --paper
 ```
 
-### Passwordless sudo is effectively root
-
-Step 5 of the script header grants `truenas_admin` passwordless sudo for
-`venv/bin/borgmatic *` and `bin/borg-wrapper.sh *`. Be aware that this is
-equivalent to passwordless root for anything running as `truenas_admin`:
-`borgmatic -c <any file>` runs that file's command hooks as root, and
-`borg --rsh '<command>'` runs an arbitrary command as root. A sudoers wildcard
-cannot narrow this. If that is not acceptable, skip the grant and enter the
-sudo password when using the aliases; the cron job runs as root and does not
-need it.
-
 Set the TrueNAS Cron Job command (System Settings -> Advanced -> Cron Jobs)
 to the flock-wrapped form so it shares the installer's lock:
 

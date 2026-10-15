@@ -4,6 +4,10 @@ All notable changes to this repository are documented here.
 
 ## Unreleased
 
+- Removed the passwordless sudo step from the installer's AFTER RUNNING
+  notes and the README. The `borgmatic`/`borg` aliases prompt for the sudo
+  password as usual; the cron job runs as root and never needed a grant.
+  Later steps are renumbered.
 - README: documented creating the passphrase file (generated for a new
   repository, or entered at a silent prompt for an existing one), creating
   the repository with `repo-create`, and exporting the repository key. The

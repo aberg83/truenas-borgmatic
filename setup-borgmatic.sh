@@ -197,28 +197,15 @@
 #      healthchecks' dead-man's-switch will flag a skipped run the same way
 #      it flags any other missed one.
 #
-#   5. TrueNAS-managed passwordless sudo (Credentials -> Users ->
-#      truenas_admin -> Allowed Sudo Commands (No Password) -- do NOT use a
-#      manual /etc/sudoers.d file, TrueNAS's own GUI-managed grant silently
-#      overrides it):
-#        $BASE_DIR/venv/bin/borgmatic *
-#        $BASE_DIR/bin/borg-wrapper.sh *
-#      SECURITY: these two grants are equivalent to passwordless root for
-#      anything running as truenas_admin. `borgmatic -c <any file>` runs that
-#      file's command hooks as root, and `borg --rsh '<command>'` runs an
-#      arbitrary command as root. The `*` cannot be narrowed to prevent this.
-#      Only add them if that is acceptable for this account; otherwise skip
-#      this step and type the sudo password when using the aliases (the
-#      cron job runs as root and doesn't need either grant).
-#
-#   6. Source $BASE_DIR/aliases.sh from your shell's rc file (this script
-#      creates aliases.sh but can't safely edit your rc file for you):
+#   5. Source $BASE_DIR/aliases.sh from your shell's rc file (this script
+#      creates aliases.sh but can't safely edit your rc file for you). The
+#      aliases run through sudo and ask for your password as usual:
 #        echo 'source BASE_DIR/aliases.sh' >> ~/.zshrc   # or ~/.bashrc
 #      Optionally add a TrueNAS Init/Shutdown Script (Post Init, type
 #      Command) to self-heal that line if a future update wipes ~/.zshrc:
 #        grep -qxF 'source BASE_DIR/aliases.sh' ~/.zshrc || echo 'source BASE_DIR/aliases.sh' >> ~/.zshrc
 #
-#   7. Test end-to-end before trusting the cron job -- a dry run is NOT a
+#   6. Test end-to-end before trusting the cron job -- a dry run is NOT a
 #      valid test here: the zfs hook skips taking an actual snapshot during
 #      --dry-run, and with no static source_directories (property-based
 #      discovery only), that leaves borg with zero paths and a guaranteed
@@ -227,7 +214,7 @@
 #        borgmatic list
 #        borgmatic extract --archive latest --path /some/test/path --destination /tmp/restore-test
 #
-#   8. Mounting archives to browse/copy files out (alternative to extract):
+#   7. Mounting archives to browse/copy files out (alternative to extract):
 #        sudo mkdir -p BASE_DIR/restore-mount
 #        borgmatic mount --mount-point BASE_DIR/restore-mount   # mounts ALL
 #                                             # archives, one subdir each
@@ -242,7 +229,7 @@
 #      tools apply regardless of what borgmatic itself is doing.
 #      Don't leave a mount open indefinitely -- see LOCKING above for why.
 #
-#   9. Prove the rollback mechanism actually works, once, deliberately:
+#   8. Prove the rollback mechanism actually works, once, deliberately:
 #        sudo sh setup-borgmatic.sh --simulate-failure
 #      then confirm your install is intact:
 #        sudo sh setup-borgmatic.sh --check
@@ -730,8 +717,8 @@ virtualenv.pyz.previous.
 
 Still to do manually -- see the "AFTER RUNNING" section in this script's
 header comments for the full list (config.yaml, passphrase file, SSH key
-and known_hosts, the flock-wrapped Cron Job command, GUI-managed
-passwordless sudo, sourcing aliases.sh, and end-to-end testing).
+and known_hosts, the flock-wrapped Cron Job command, sourcing
+aliases.sh, and end-to-end testing).
 
 Worth doing once, now that a working install exists:
   sudo sh $0 --simulate-failure    # proves rollback actually works
