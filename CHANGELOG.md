@@ -2,6 +2,13 @@
 
 All notable changes to this repository are documented here.
 
+## Unreleased
+
+- README: documented creating the passphrase file (generated for a new
+  repository, or entered at a silent prompt for an existing one), creating
+  the repository with `repo-create`, and exporting the repository key. The
+  key export is added to the disaster-recovery list.
+
 ## Unarchived - 2026-10-15
 
 - Back in use on the TrueNAS system; removed the archived notice from the
