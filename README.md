@@ -249,7 +249,9 @@ sudo sh -c 'umask 077; ssh-keygen -F BORG_HOST -f /root/.ssh/known_hosts | grep 
 ```
 
 The installer and `--check` fail if `config.yaml` names a `UserKnownHostsFile`
-that is missing or empty.
+that is missing or empty. They also fail if the passphrase file named by
+`encryption_passcommand: cat ...` or the key named by `ssh_command: ssh -i ...`
+is missing, empty, or readable by group or others.
 
 ### Create the repository
 

@@ -241,7 +241,7 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.3.1"
+SCRIPT_VERSION="1.3.2"
 BASE_DIR="/mnt/apps/borgmatic"
 BORGMATIC_VERSION="2.1.7"
 # Known-bad borgmatic releases the monthly version check won't suggest.
@@ -249,7 +249,8 @@ BORGMATIC_VERSION="2.1.7"
 # a new random name every run. Borg keys its files cache on the full path, so
 # every file looks new and each backup re-reads all data (3 min -> 3 h).
 # Remove a version from this list only once upstream fixes the regression.
-BORGMATIC_SKIP_VERSIONS="2.1.8 2.1.9"
+# 2.1.10's release notes don't mention a fix, so it's skipped untested.
+BORGMATIC_SKIP_VERSIONS="2.1.8 2.1.9 2.1.10"
 BORG_VERSION="1.4.5"
 BORG_ASSET="borg-linux-glibc231-x86_64"
 BORG_SHA256="c8457f70660064d0f45b38283ab4cc65b342970012013201d3aec713a75898fb"
@@ -340,6 +341,27 @@ download() {
         -o "$destination" "$url"
 }
 
+# Fails unless $2 is a non-empty file that group and others can't read.
+# ssh refuses a private key with looser permissions, and the passphrase file
+# unlocks the repository.
+check_secret_file() {
+    label="$1"
+    file="$2"
+    if [ ! -s "$file" ]; then
+        echo "    $label $file is missing or empty." >&2
+        return 1
+    fi
+    mode="$(stat -c '%a' "$file")"
+    case "$mode" in
+        *00) echo "    $label $file OK (mode $mode)." ;;
+        *)
+            echo "    $label $file is readable by group or others (mode $mode)." >&2
+            echo "    Fix with: chmod 600 $file" >&2
+            return 1
+            ;;
+    esac
+}
+
 # Shared by a normal install's final sanity check and standalone --check
 # mode. Never downloads, replaces, or changes persistent install files.
 run_verification() {
@@ -393,6 +415,21 @@ run_verification() {
                 echo "    See step 3 of AFTER RUNNING in this script's header." >&2
                 return 1
             fi
+        fi
+
+        # Only the plain forms the example config uses are checked:
+        # `encryption_passcommand: cat FILE` and `ssh_command: ssh -i FILE ...`.
+        passphrase_file="$(sed -n 's/^encryption_passcommand:[[:space:]]*cat[[:space:]]\{1,\}\([^ "'"'"']*\).*/\1/p' \
+            "$BASE_DIR/config.yaml" | head -n 1)"
+        if [ -n "$passphrase_file" ]; then
+            echo "==> Verifying passphrase file"
+            check_secret_file "Passphrase file" "$passphrase_file" || return 1
+        fi
+        ssh_key_file="$(sed -n 's/^ssh_command:.*[[:space:]]-i[[:space:]]\{1,\}\([^ "'"'"']*\).*/\1/p' \
+            "$BASE_DIR/config.yaml" | head -n 1)"
+        if [ -n "$ssh_key_file" ]; then
+            echo "==> Verifying SSH private key"
+            check_secret_file "SSH key" "$ssh_key_file" || return 1
         fi
     else
         echo "NOTE: $BASE_DIR/config.yaml not found -- skipping config validation."
@@ -473,7 +510,7 @@ if ! awk -v pin="borgmatic==$BORGMATIC_VERSION" '$1 == pin { found = 1 } END { e
     exit 1
 fi
 
-for required_command in curl python3 sha256sum awk grep flock; do
+for required_command in curl python3 sha256sum awk grep flock stat; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "ERROR: Required command not found: $required_command" >&2
         exit 1
