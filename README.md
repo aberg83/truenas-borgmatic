@@ -161,6 +161,41 @@ sudo zfs set org.torsion.borgmatic:backup=auto POOL/DATASET
 
 Do not replace an existing working `config.yaml` with the example.
 
+### SSH key for rsync.net
+
+The example's `ssh_command` uses `/mnt/apps/borgmatic/ssh/id_ed25519`. The
+installer creates the `ssh` directory (mode 700) but not the key. Generate it
+with no passphrase, because the cron job runs unattended:
+
+```
+sudo ssh-keygen -t ed25519 -N '' -C borgmatic@truenas \
+    -f /mnt/apps/borgmatic/ssh/id_ed25519
+```
+
+Register the public key with rsync.net, restricted to the one repository and
+using the same versioned remote binary as `remote_path` (`borg14` for Borg
+1.4). Build the line locally, then append it to the remote
+`.ssh/authorized_keys`. This logs in with an existing key or the account
+password:
+
+```
+printf 'command="borg14 serve --restrict-to-repository /home/RSYNC_USER/REPOSITORY_PATH",restrict %s\n' \
+    "$(sudo cat /mnt/apps/borgmatic/ssh/id_ed25519.pub)" > /tmp/authorized_key.new
+cat /tmp/authorized_key.new
+ssh RSYNC_USER@RSYNC_HOST 'dd of=.ssh/authorized_keys oflag=append conv=notrunc' < /tmp/authorized_key.new
+rm /tmp/authorized_key.new
+```
+
+Check the full repository path on the server (`ssh RSYNC_USER@RSYNC_HOST pwd`
+prints the home directory). If this key replaces a lost one, remove the old key's
+line from `authorized_keys` in the same session. Once `known_hosts` is in
+place (below), test the key with `sudo /mnt/apps/borgmatic/venv/bin/borgmatic
+-c /mnt/apps/borgmatic/config.yaml repo-info`.
+
+Keep an off-host copy of the private key, or confirm that you can register a
+replacement through your rsync.net account (see
+[Disaster-recovery material](#disaster-recovery-material)).
+
 The example's `ssh_command` pins the server's host key in
 `/mnt/apps/borgmatic/ssh/known_hosts` rather than `/root/.ssh`. Populate it
 before the first backup, checking the fingerprint against the one your

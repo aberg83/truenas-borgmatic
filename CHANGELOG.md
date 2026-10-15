@@ -8,6 +8,8 @@ All notable changes to this repository are documented here.
   README. Pins are unchanged at v1.3.1 (borgmatic 2.1.7, Borg 1.4.5).
   borgmatic 2.1.10 is out but its release notes don't mention the
   runtime-directory change behind the 2.1.8+ files-cache regression.
+- README: documented creating the rsync.net SSH key and registering it in
+  `authorized_keys` with the restricted `borg14 serve` forced command.
 
 ## Archived - 2026-10-07
 
