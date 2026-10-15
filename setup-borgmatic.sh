@@ -202,8 +202,10 @@
 #      aliases run through sudo and ask for your password as usual:
 #        echo 'source BASE_DIR/aliases.sh' >> ~/.zshrc   # or ~/.bashrc
 #      Optionally add a TrueNAS Init/Shutdown Script (Post Init, type
-#      Command) to self-heal that line if a future update wipes ~/.zshrc:
-#        grep -qxF 'source BASE_DIR/aliases.sh' ~/.zshrc || echo 'source BASE_DIR/aliases.sh' >> ~/.zshrc
+#      Command) to self-heal that line if a future update wipes ~/.zshrc.
+#      Init scripts run as root, where ~ is /root, so name your own rc file
+#      by its full path:
+#        grep -qxF 'source BASE_DIR/aliases.sh' /home/truenas_admin/.zshrc || echo 'source BASE_DIR/aliases.sh' >> /home/truenas_admin/.zshrc
 #
 #   6. Test end-to-end before trusting the cron job -- a dry run is NOT a
 #      valid test here: the zfs hook skips taking an actual snapshot during

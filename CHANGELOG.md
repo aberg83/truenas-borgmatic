@@ -4,6 +4,9 @@ All notable changes to this repository are documented here.
 
 ## Unreleased
 
+- Fixed the optional Post Init self-heal command for the aliases line. Init
+  scripts run as root, so `~/.zshrc` pointed at `/root/.zshrc`; it now names
+  `/home/truenas_admin/.zshrc`.
 - Removed the passwordless sudo step from the installer's AFTER RUNNING
   notes and the README. The `borgmatic`/`borg` aliases prompt for the sudo
   password as usual; the cron job runs as root and never needed a grant.
