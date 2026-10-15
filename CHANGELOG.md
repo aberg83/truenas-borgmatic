@@ -2,6 +2,13 @@
 
 All notable changes to this repository are documented here.
 
+## Unarchived - 2026-10-15
+
+- Back in use on the TrueNAS system; removed the archived notice from the
+  README. Pins are unchanged at v1.3.1 (borgmatic 2.1.7, Borg 1.4.5).
+  borgmatic 2.1.10 is out but its release notes don't mention the
+  runtime-directory change behind the 2.1.8+ files-cache regression.
+
 ## Archived - 2026-10-07
 
 - Setup removed from the TrueNAS system; repository archived. v1.3.1 is the
