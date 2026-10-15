@@ -38,10 +38,10 @@ healthchecks:
     send_logs: true
 monitoring_verbosity: 1
 
-# Optional but recommended -- retry transient network/SSH failures against
-# the Borg host rather than treating them as immediate hard failures.
-# retries: 5
-# retry_wait: 5
+# Retry transient network/SSH failures against the Borg host instead of
+# failing the night's run. The wait grows with each retry (60s, 120s, 180s).
+retries: 3
+retry_wait: 60
 
 # Optional -- periodic consistency verification, run less often than backups
 # since it reads more data. archives is capped via check_last so it doesn't

@@ -2,8 +2,17 @@
 
 All notable changes to this repository are documented here.
 
-## Unreleased
+## 1.3.2 - 2026-10-15
 
+- `--check` (and the installer's final sanity check) now verifies that the
+  passphrase file from `encryption_passcommand: cat ...` and the SSH key from
+  `ssh_command: ssh -i ...` exist, aren't empty, and aren't readable by group
+  or others, so a missing secret shows up before the nightly run fails.
+- Added borgmatic 2.1.10 to `BORGMATIC_SKIP_VERSIONS`. Its release notes don't
+  mention a fix for the 2.1.8+ files-cache regression; remove it once a
+  release is tested with two consecutive fast `create --stats` runs.
+- `config.yaml.example` enables `retries: 3` and `retry_wait: 60`, so a brief
+  network or host outage is retried instead of failing the run.
 - Removed the `borg` alias from `aliases.sh`. It ran the Borg wrapper
   without the repository, passphrase or SSH settings, so repository
   commands failed; use `borgmatic borg ...` instead. Re-run the installer to
