@@ -117,9 +117,11 @@
 #                                             # TMPDIR is set for every
 #                                             # action, not just the ones
 #                                             # tested so far.
-#        remote_path: borgXX                 # match your rsync.net-side
-#                                             # pinned Borg version, e.g.
-#                                             # borg14 for Borg 1.4.x
+#        remote_path: borgXX                 # the Borg command on the
+#                                             # host, e.g. borg14 on
+#                                             # rsync.net for Borg 1.4.x;
+#                                             # omit for BorgBase and most
+#                                             # self-hosted servers
 #        temporary_directory: $BASE_DIR/tmp
 #        user_runtime_directory: $BASE_DIR/tmp
 #        borg_base_directory: $BASE_DIR      # covers cache/config/security
@@ -138,8 +140,8 @@
 #                                             # into the repo it unlocks
 #        zfs: {}
 #        repositories:
-#            - path: ssh://youruser@yourhost.rsync.net/./yourrepo
-#              label: rsync.net
+#            - path: ssh://youruser@yourhost/./yourrepo
+#              label: offsite
 #        keep_daily: 30
 #        keep_weekly: 52
 #        keep_monthly: 24
@@ -154,22 +156,26 @@
 #      a process listing, and the file is never briefly world-readable:
 #        sudo sh -c 'umask 077; stty -echo; IFS= read -r p; stty echo; printf %s "$p" > BASE_DIR/passphrase'
 #
-#   3. rsync.net authorized_keys needs a forced command restricted to this
-#      repo, using the versioned remote binary name (borg14, borg15, etc. --
-#      whatever `remote_path` above is set to), e.g.:
+#   3. SSH key for the Borg host (see "SSH key for the Borg host" in
+#      README.md):
+#        sudo ssh-keygen -t ed25519 -N '' -f BASE_DIR/ssh/id_ed25519
+#      Register the public key with the host, restricted to this repo where
+#      the host allows it. BorgBase and similar hosts take it in their web UI.
+#      Hosts that use authorized_keys (rsync.net, self-hosted) need a forced
+#      command running the same binary name as `remote_path`, e.g.:
 #        command="borg14 serve --restrict-to-repository /home/XXXXX/yourrepo",restrict ssh-ed25519 AAAA...
 #      A bare "borg serve" (unversioned) will fail on providers that pin
-#      multiple Borg versions -- match remote_path exactly.
+#      multiple Borg versions, such as rsync.net -- match remote_path exactly.
 #
 #      Pin the server's host key on the dataset (matches the ssh_command
 #      above). Fetch it, compare the fingerprint against the one your provider
 #      publishes, and only then install it:
-#        sudo ssh-keyscan -t ed25519 yourhost.rsync.net > /tmp/known_hosts.new
+#        sudo ssh-keyscan -t ed25519 yourhost > /tmp/known_hosts.new
 #        ssh-keygen -lf /tmp/known_hosts.new
 #        sudo install -m 600 /tmp/known_hosts.new BASE_DIR/ssh/known_hosts
 #      If root has already connected and trusted this host, copy that entry
 #      instead:
-#        sudo sh -c 'umask 077; ssh-keygen -F yourhost.rsync.net -f /root/.ssh/known_hosts | grep -v "^#" > BASE_DIR/ssh/known_hosts'
+#        sudo sh -c 'umask 077; ssh-keygen -F yourhost -f /root/.ssh/known_hosts | grep -v "^#" > BASE_DIR/ssh/known_hosts'
 #      The installer's verification (and --check) fails if config.yaml names a
 #      UserKnownHostsFile that is missing or empty.
 #
@@ -718,8 +724,8 @@ existed: venv-previous, bin/borg.previous, bin/borg-wrapper.sh.previous, and
 virtualenv.pyz.previous.
 
 Still to do manually -- see the "AFTER RUNNING" section in this script's
-header comments for the full list (config.yaml, passphrase file, rsync.net
-authorized_keys, the flock-wrapped Cron Job command, GUI-managed
+header comments for the full list (config.yaml, passphrase file, SSH key
+and known_hosts, the flock-wrapped Cron Job command, GUI-managed
 passwordless sudo, sourcing aliases.sh, and end-to-end testing).
 
 Worth doing once, now that a working install exists:

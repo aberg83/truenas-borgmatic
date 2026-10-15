@@ -9,7 +9,7 @@
 # installation bootstrap and stays pinned unless there is a reason to move it.
 #
 # Borg is compared within its pinned major.minor series (e.g. 1.4.x), since a
-# new series needs a matching remote_path on rsync.net; a newer stable series
+# new series needs a matching Borg version on the remote host; a newer stable series
 # is reported separately as informational.
 #
 # borgmatic versions listed in BORGMATIC_SKIP_VERSIONS are known-bad: they are
@@ -106,8 +106,9 @@ if [ "${borg_newest_overall%.*}" != "$borg_series" ] &&
     is_newer "$borg_pinned" "$borg_newest_overall"; then
     echo ""
     echo "A newer stable Borg series is also available: $borg_newest_overall." \
-        "Moving to it needs a matching remote_path (and authorized_keys forced" \
-        "command) on rsync.net, so treat it as a separate, deliberate upgrade."
+        "Moving to it needs a matching Borg version on the remote host (and" \
+        "remote_path or forced command where the host uses one), so treat it" \
+        "as a separate, deliberate upgrade."
 fi
 
 cat <<'NOTES'
@@ -117,7 +118,7 @@ versions" in README.md:
 
 - **borgmatic:** bump `BORGMATIC_VERSION` and regenerate `requirements.txt`.
 - **Borg:** bump `BORG_VERSION` and `BORG_SHA256` together, taking the checksum
-  from the official release; keep the rsync.net `remote_path` series compatible.
+  from the official release; keep the remote host's Borg series compatible.
 - **virtualenv:** only a bootstrap; leave it pinned unless a security or Python
   compatibility issue gives a reason to change it.
 

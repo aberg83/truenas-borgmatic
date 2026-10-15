@@ -1,13 +1,5 @@
 # borgmatic on TrueNAS SCALE
 
-> **Archived — no longer in use or maintained.** This setup was removed from
-> the TrueNAS system it was written for in October 2026. The last tested
-> release is [v1.3.1](https://github.com/aberg83/truenas-borgmatic/releases/tag/v1.3.1) (borgmatic 2.1.7, Borg 1.4.5,
-> Python 3.11). Pinned versions and checksums are not being updated, so review
-> them before reusing anything here. In particular, borgmatic 2.1.8 and later
-> make every backup re-read all data with this ZFS setup; see
-> [Updating pinned versions](#updating-pinned-versions).
-
 This repository installs a pinned borgmatic and Borg environment on a
 TrueNAS SCALE system without modifying the appliance-managed operating system.
 It is intended to live directly in `/mnt/apps/borgmatic` alongside the active
@@ -169,13 +161,60 @@ sudo zfs set org.torsion.borgmatic:backup=auto POOL/DATASET
 
 Do not replace an existing working `config.yaml` with the example.
 
+### SSH key for the Borg host
+
+The example's `ssh_command` uses `/mnt/apps/borgmatic/ssh/id_ed25519`. The
+installer creates the `ssh` directory (mode 700) but not the key. Generate it
+with no passphrase, because the cron job runs unattended:
+
+```
+sudo ssh-keygen -t ed25519 -N '' -C borgmatic@truenas \
+    -f /mnt/apps/borgmatic/ssh/id_ed25519
+sudo cat /mnt/apps/borgmatic/ssh/id_ed25519.pub
+```
+
+Register the public key with the host, restricted to this one repository
+wherever the host allows it. How depends on the host:
+
+- **Hosts with a web UI, such as BorgBase:** add the public key in the
+  account's SSH keys, then give it access to the repository. Use the
+  repository URL the host shows for `path`, and leave out `remote_path`
+  unless the host says otherwise.
+- **Hosts that use `authorized_keys`, such as rsync.net or your own server:**
+  add a line with a forced command restricted to the repository. Run the
+  command name that `remote_path` names. That's a versioned name like
+  `borg14` on rsync.net, where a bare `borg serve` fails; on your own server
+  it's usually plain `borg`. For example:
+
+  ```
+  printf 'command="borg14 serve --restrict-to-repository /home/BORG_USER/REPOSITORY_PATH",restrict %s\n' \
+      "$(sudo cat /mnt/apps/borgmatic/ssh/id_ed25519.pub)" > /tmp/authorized_key.new
+  cat /tmp/authorized_key.new
+  ssh BORG_USER@BORG_HOST 'dd of=.ssh/authorized_keys oflag=append conv=notrunc' < /tmp/authorized_key.new
+  rm /tmp/authorized_key.new
+  ```
+
+  The `ssh` login needs the account password or a key without a forced
+  command. On your own server, append the line as the backup user with any
+  editor instead.
+- **Other hosts:** follow the host's own Borg instructions for adding a key
+  and for the `path` and `remote_path` values.
+
+If the new key replaces a lost one, remove the old key from the host. Once
+`known_hosts` is in place (below), test the key with
+`sudo /mnt/apps/borgmatic/venv/bin/borgmatic -c /mnt/apps/borgmatic/config.yaml repo-info`.
+
+Keep an off-host copy of the private key, or confirm that you can register a
+replacement through your account with the host (see
+[Disaster-recovery material](#disaster-recovery-material)).
+
 The example's `ssh_command` pins the server's host key in
 `/mnt/apps/borgmatic/ssh/known_hosts` rather than `/root/.ssh`. Populate it
 before the first backup, checking the fingerprint against the one your
-provider publishes:
+provider publishes. If the host uses a port other than 22, add `-p PORT`:
 
 ```
-sudo ssh-keyscan -t ed25519 RSYNC_HOST > /tmp/known_hosts.new
+sudo ssh-keyscan -t ed25519 BORG_HOST > /tmp/known_hosts.new
 ssh-keygen -lf /tmp/known_hosts.new
 sudo install -m 600 /tmp/known_hosts.new /mnt/apps/borgmatic/ssh/known_hosts
 ```
@@ -184,7 +223,7 @@ An existing installation that already trusts the host from `/root` can copy
 that entry instead, then add the three `-o` options to its live `ssh_command`:
 
 ```
-sudo sh -c 'umask 077; ssh-keygen -F RSYNC_HOST -f /root/.ssh/known_hosts | grep -v "^#" > /mnt/apps/borgmatic/ssh/known_hosts'
+sudo sh -c 'umask 077; ssh-keygen -F BORG_HOST -f /root/.ssh/known_hosts | grep -v "^#" > /mnt/apps/borgmatic/ssh/known_hosts'
 ```
 
 The installer and `--check` fail if `config.yaml` names a `UserKnownHostsFile`
@@ -224,9 +263,9 @@ sensitivity of each item:
 - the Borg encryption passphrase, in a password manager or protected emergency
   record;
 - an encrypted off-host copy of the real `config.yaml`;
-- the rsync.net SSH private key, or verified rsync.net account access that lets
-  you register a replacement key; and
-- the repository address and rsync.net account details.
+- the Borg host's SSH private key, or verified account access with the host
+  that lets you register a replacement key; and
+- the repository address and the host's account details.
 
 The repository and its archives cannot be recovered without the encryption
 passphrase. Do not rely on the copies inside `/mnt/apps/borgmatic` as your only
@@ -351,7 +390,7 @@ first.
 
 
 - review borgmatic and Borg releases once or twice per year;
-- keep the local and rsync.net Borg major/minor families compatible;
+- keep the local and remote Borg major/minor families compatible;
 - update the version, immutable download URL, and checksum together;
 - when bumping `BORGMATIC_VERSION`, or when a TrueNAS update changes the
   system Python minor version, regenerate `requirements.txt` with
