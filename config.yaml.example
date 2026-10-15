@@ -8,10 +8,12 @@
 source_directories: []
 
 repositories:
-    - path: ssh://RSYNC_USER@RSYNC_HOST/./REPOSITORY_PATH
-      label: rsync.net
+    - path: ssh://BORG_USER@BORG_HOST/./REPOSITORY_PATH
+      label: offsite
 
 local_path: /mnt/apps/borgmatic/bin/borg-wrapper.sh
+# The Borg command on the host. rsync.net needs a versioned name (borg14 for
+# Borg 1.4.x); BorgBase and most self-hosted servers don't need this line.
 remote_path: borg14
 temporary_directory: /mnt/apps/borgmatic/tmp
 user_runtime_directory: /mnt/apps/borgmatic/tmp
@@ -37,7 +39,7 @@ healthchecks:
 monitoring_verbosity: 1
 
 # Optional but recommended -- retry transient network/SSH failures against
-# rsync.net rather than treating them as immediate hard failures.
+# the Borg host rather than treating them as immediate hard failures.
 # retries: 5
 # retry_wait: 5
 
