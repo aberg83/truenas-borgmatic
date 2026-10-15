@@ -151,10 +151,15 @@
 #            send_logs: true
 #        monitoring_verbosity: 1
 #
-#   2. Passphrase file (if using encryption_passcommand as above). Type the
+#   2. Passphrase file (if using encryption_passcommand as above; see
+#      "Encryption passphrase" in README.md). For an existing repo, type the
 #      passphrase at the silent prompt, so it never lands in shell history or
 #      a process listing, and the file is never briefly world-readable:
 #        sudo sh -c 'umask 077; stty -echo; IFS= read -r p; stty echo; printf %s "$p" > BASE_DIR/passphrase'
+#      For a new repo, generate one instead, save it in a password manager,
+#      then run `borgmatic repo-create --encryption repokey-blake2` and
+#      `borgmatic key export` once SSH works (see "Create the repository").
+#        sudo sh -c 'umask 077; head -c 48 /dev/urandom | base64 | tr -d "\n" > BASE_DIR/passphrase'
 #
 #   3. SSH key for the Borg host (see "SSH key for the Borg host" in
 #      README.md):

@@ -161,6 +161,28 @@ sudo zfs set org.torsion.borgmatic:backup=auto POOL/DATASET
 
 Do not replace an existing working `config.yaml` with the example.
 
+### Encryption passphrase
+
+The example's `encryption_passcommand` reads the Borg passphrase from
+`/mnt/apps/borgmatic/passphrase`. Don't put the passphrase in `config.yaml`,
+because that file gets backed up into the repository it unlocks.
+
+For a new repository, generate a random passphrase straight into the file,
+then display it once and save it in your password manager:
+
+```
+sudo sh -c 'umask 077; head -c 48 /dev/urandom | base64 | tr -d "\n" > /mnt/apps/borgmatic/passphrase'
+sudo cat /mnt/apps/borgmatic/passphrase; echo
+```
+
+For an existing repository, enter its passphrase at a silent prompt (nothing
+is shown; press Enter when done), so it never lands in shell history or a
+process listing:
+
+```
+sudo sh -c 'umask 077; stty -echo; IFS= read -r p; stty echo; printf %s "$p" > /mnt/apps/borgmatic/passphrase'
+```
+
 ### SSH key for the Borg host
 
 The example's `ssh_command` uses `/mnt/apps/borgmatic/ssh/id_ed25519`. The
@@ -229,6 +251,27 @@ sudo sh -c 'umask 077; ssh-keygen -F BORG_HOST -f /root/.ssh/known_hosts | grep 
 The installer and `--check` fail if `config.yaml` names a `UserKnownHostsFile`
 that is missing or empty.
 
+### Create the repository
+
+Skip this when reusing an existing repository. Once the SSH key and
+`known_hosts` are in place, initialize a new encrypted repository. Hosts
+with a web UI, such as BorgBase, need the repository created there first;
+this command then sets it up:
+
+```
+sudo /mnt/apps/borgmatic/venv/bin/borgmatic -c /mnt/apps/borgmatic/config.yaml \
+    repo-create --encryption repokey-blake2
+```
+
+With `repokey` encryption the key is stored inside the repository, so export
+a copy and keep it with the passphrase. Without the key and passphrase, a
+damaged repository can't be read:
+
+```
+sudo /mnt/apps/borgmatic/venv/bin/borgmatic -c /mnt/apps/borgmatic/config.yaml \
+    key export --paper
+```
+
 ### Passwordless sudo is effectively root
 
 Step 5 of the script header grants `truenas_admin` passwordless sudo for
@@ -262,6 +305,7 @@ sensitivity of each item:
 
 - the Borg encryption passphrase, in a password manager or protected emergency
   record;
+- the exported repository key (`borgmatic key export`);
 - an encrypted off-host copy of the real `config.yaml`;
 - the Borg host's SSH private key, or verified account access with the host
   that lets you register a replacement key; and
