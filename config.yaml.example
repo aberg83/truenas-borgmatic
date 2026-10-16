@@ -25,6 +25,16 @@ borg_base_directory: /mnt/apps/borgmatic
 ssh_command: ssh -i /mnt/apps/borgmatic/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/mnt/apps/borgmatic/ssh/known_hosts
 encryption_passcommand: cat /mnt/apps/borgmatic/passphrase
 
+# "auto" tests each chunk and only zstd-compresses data that shrinks, so
+# already-compressed photos and video cost little CPU. Only new chunks are
+# affected; existing archives keep their compression. Borg's default is lz4.
+compression: auto,zstd
+
+# Borg waits 1 second for the repository lock by default, so the nightly run
+# fails if a manual `borgmatic list` or `mount` is holding it. Wait up to 5
+# minutes instead.
+lock_wait: 300
+
 # Enable consistent snapshots of tagged ZFS datasets.
 zfs: {}
 

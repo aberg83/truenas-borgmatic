@@ -2,6 +2,13 @@
 
 All notable changes to this repository are documented here.
 
+## Unreleased
+
+- `config.yaml.example` sets `compression: auto,zstd` (better ratio than the
+  lz4 default, skipping incompressible data) and `lock_wait: 300`, so a
+  short manual `borgmatic list` or `mount` no longer fails the nightly run
+  on the repository lock.
+
 ## 1.3.2 - 2026-10-15
 
 - `--check` (and the installer's final sanity check) now verifies that the
