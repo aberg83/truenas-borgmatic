@@ -244,7 +244,7 @@ set -eu
 umask 077
 
 # ---- Configuration -- adjust these if your paths/versions differ ----------
-SCRIPT_VERSION="1.3.2"
+SCRIPT_VERSION="1.3.3"
 BASE_DIR="/mnt/apps/borgmatic"
 BORGMATIC_VERSION="2.1.7"
 # Known-bad borgmatic releases the monthly version check won't suggest.

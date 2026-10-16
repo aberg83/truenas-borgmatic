@@ -2,7 +2,7 @@
 
 All notable changes to this repository are documented here.
 
-## Unreleased
+## 1.3.3 - 2026-10-16
 
 - `config.yaml.example` adds `-o ServerAliveInterval=60 -o
   ServerAliveCountMax=5` to `ssh_command`, so idle connections aren't dropped
