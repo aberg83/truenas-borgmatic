@@ -4,6 +4,9 @@ All notable changes to this repository are documented here.
 
 ## Unreleased
 
+- `config.yaml.example` warns against the `data` check: with Borg 1.x it
+  downloads and verifies every chunk in the repository regardless of
+  `check_last`.
 - `config.yaml.example` sets `compression: auto,zstd` (better ratio than the
   lz4 default, skipping incompressible data) and `lock_wait: 300`, so a
   short manual `borgmatic list` or `mount` no longer fails the nightly run
