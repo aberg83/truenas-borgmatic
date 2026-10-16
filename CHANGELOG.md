@@ -4,6 +4,10 @@ All notable changes to this repository are documented here.
 
 ## Unreleased
 
+- `config.yaml.example` adds `-o ServerAliveInterval=60 -o
+  ServerAliveCountMax=5` to `ssh_command`, so idle connections aren't dropped
+  during long server-side checks and a dead link fails the run in about 5
+  minutes instead of hanging while holding the lock.
 - `config.yaml.example` warns against the `data` check: with Borg 1.x it
   downloads and verifies every chunk in the repository regardless of
   `check_last`.

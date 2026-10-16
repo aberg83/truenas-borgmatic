@@ -128,11 +128,14 @@
 #        ssh_command: ssh -i $BASE_DIR/ssh/id_ed25519 -o BatchMode=yes
 #            -o StrictHostKeyChecking=yes
 #            -o UserKnownHostsFile=$BASE_DIR/ssh/known_hosts
+#            -o ServerAliveInterval=60 -o ServerAliveCountMax=5
 #                                             # (one line) -- host keys live
 #                                             # on the dataset, not in /root,
 #                                             # and an unknown or changed key
 #                                             # fails fast instead of hanging
-#                                             # the cron job on a prompt
+#                                             # the cron job on a prompt;
+#                                             # keepalives stop idle drops and
+#                                             # end a dead link in ~5 minutes
 #        encryption_passcommand: cat $BASE_DIR/passphrase   # NOT a plaintext
 #                                             # encryption_passphrase: line --
 #                                             # config.yaml gets backed up
