@@ -22,7 +22,11 @@ borg_base_directory: /mnt/apps/borgmatic
 # StrictHostKeyChecking make an unknown or changed host key fail the run
 # immediately instead of hanging on a prompt. Populate ssh/known_hosts first --
 # see step 3 of AFTER RUNNING in setup-borgmatic.sh.
-ssh_command: ssh -i /mnt/apps/borgmatic/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/mnt/apps/borgmatic/ssh/known_hosts
+# ServerAliveInterval sends a keepalive every 60s, so routers and firewalls
+# don't drop the connection during long silent phases such as the
+# server-side repository check, and a dead link fails the run after about
+# 5 minutes (ServerAliveCountMax=5) instead of hanging while holding the lock.
+ssh_command: ssh -i /mnt/apps/borgmatic/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/mnt/apps/borgmatic/ssh/known_hosts -o ServerAliveInterval=60 -o ServerAliveCountMax=5
 encryption_passcommand: cat /mnt/apps/borgmatic/passphrase
 
 # "auto" tests each chunk and only zstd-compresses data that shrinks, so
