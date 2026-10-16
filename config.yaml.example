@@ -67,6 +67,13 @@ retry_wait: 60
 #       frequency: 8 weeks
 # check_last: 3
 #
+# Don't add the "data" check unless you mean to download the whole repository.
+# It runs `borg check --verify-data`, which in Borg 1.x reads and decrypts
+# every chunk in the repository on this machine, whatever check_last says.
+# Over SSH that transfers the full repository size each time it runs. The
+# repository check above already verifies segment checksums on the Borg host
+# without any transfer; periodic test restores cover decryption.
+#
 # Don't add the "spot" check here: it builds its file list from
 # source_directories and doesn't run the ZFS hook, so with property-based
 # dataset discovery it would compare an empty source list against a full
